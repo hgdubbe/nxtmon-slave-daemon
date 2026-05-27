@@ -1,1 +1,256 @@
+# =========================================================================
+# nxtmon-slave-daemon - Complete Reference Configuration
+# =========================================================================
+# This file contains EVERY planned check category documented in the spec.
+# It is designed as a learning resource and a copy-paste template.
+#
+# NOTE: Not all tests are fully implemented in the C backend yet. Checks 
+# rely on the generic 'type', 'extra_key', 'extra_val', and 'hosts' array 
+# parsed by the config engine.
+# =========================================================================
 
+master:
+  host: 10.0.0.10      # IP or hostname of the central nxtmon master
+  port: 9000           # TCP port the master listens on for JSON payloads
+
+agent:
+  display_name: my-reference-node  # How this agent identifies in the JSON payload
+  interval_sec: 10                 # Execution interval in seconds
+
+tests:
+  # =======================================================================
+  # 1. NETWORK CHECKS
+  # =======================================================================
+  - type: hostname
+    display_name: Local Hostname
+    # Retrieves the current system hostname.
+
+  - type: ip-address
+    display_name: Primary IP Address
+    # Retrieves the primary routable IP of the node.
+
+  - type: net_load
+    display_name: Average Network Load
+    # Calculates bandwidth utilization over the interval.
+
+  - type: dns_resolve
+    display_name: Name Resolution Check
+    extra_key: domain
+    extra_val: nextcloud.local
+    # Verifies if local DNS resolution is functioning.
+
+  - type: ping
+    display_name: Core Infrastructure Ping
+    hosts:
+      - display_name: gateway
+        host: 10.0.0.1
+      - display_name: master-db
+        host: 10.0.0.20
+    # ICMP or TCP port 7 echo to verify reachability and latency.
+
+  - type: conntrack
+    display_name: Connection Tracking Table State
+    # Checks for dropped packets / conntrack table saturation.
+
+  # =======================================================================
+  # 2. LOCAL SERVICES
+  # =======================================================================
+  - type: service_status
+    display_name: HAProxy Service State
+    extra_key: unit
+    extra_val: haproxy.service
+    # Checks if a systemd unit is active/running.
+
+  - type: service_port
+    display_name: Nginx Port Check
+    extra_key: port
+    extra_val: "80"
+    # Verifies if the local port is open and listening.
+
+  - type: service_pid
+    display_name: Redis PID Check
+    extra_key: process
+    extra_val: redis-server
+    # Ensures the process is actively running in the process tree.
+
+  - type: service_connections
+    display_name: Active DB Connections
+    extra_key: port
+    extra_val: "3306"
+    # Counts active socket connections to a specific service port.
+
+  # =======================================================================
+  # 3. LOAD BALANCER (Nginx/HAProxy)
+  # =======================================================================
+  - type: lb_backend_state
+    display_name: Nextcloud App Nodes Backend State
+    extra_key: backend_pool
+    extra_val: nextcloud_cluster
+    # Monitors UP/DOWN transitions per backend node.
+
+  - type: lb_sticky_session
+    display_name: Sticky Session Validation
+    # Checks if proxy headers/cookies are propagating correctly.
+
+  - type: lb_connections
+    display_name: Client vs Backend Connections
+    # Compares active incoming clients vs outgoing backend connections.
+
+  - type: ssl_cert
+    display_name: Main Domain SSL Expiry
+    extra_key: domain
+    extra_val: mycloud.example.com
+    # Validates SSL certificate expiration date.
+
+  - type: lb_cache
+    display_name: Proxy Cache Hit/Miss Ratio
+    # Measures caching efficiency (if proxy_cache is used).
+
+  # =======================================================================
+  # 4. DATABASE (MariaDB)
+  # =======================================================================
+  - type: db_latency_write
+    display_name: Database Write Latency
+    
+  - type: db_latency_read
+    display_name: Database Read Latency
+
+  - type: db_master_slave
+    display_name: Replication Role Check
+    # Determines if the node is acting as Master or Slave.
+
+  - type: db_rw_ro
+    display_name: Read-Write / Read-Only State
+    # Verifies if the database is strictly in RO mode (e.g., for slaves).
+
+  - type: db_gtid
+    display_name: Current GTID Position
+
+  - type: db_sync_status
+    display_name: Master/Slave Sync Status
+    # Timestamped comparison of Master/Slave GTID to calculate replication lag.
+
+  - type: db_slow_queries
+    display_name: Slow Query Rate
+
+  - type: db_connections
+    display_name: Available DB Connections
+    # Compares Threads_connected vs max_connections.
+
+  - type: db_innodb_buffer
+    display_name: InnoDB Buffer Pool Hit Rate
+
+  # =======================================================================
+  # 5. REDIS
+  # =======================================================================
+  - type: redis_sync_channel
+    display_name: Redis Sync Channel Status
+    
+  - type: redis_sync_status
+    display_name: Redis Replication Lag
+    # Comparison of timestamped payload between master and slave.
+
+  - type: redis_memory
+    display_name: Redis Memory Usage
+    # Compares current memory usage vs maxmemory limit.
+
+  - type: redis_evicted_keys
+    display_name: Evicted Keys Rate
+    # Monitors if Redis is running out of memory and dropping keys.
+
+  - type: redis_clients
+    display_name: Connected Redis Clients
+
+  # =======================================================================
+  # 6. WEBSERVER / PHP (App Nodes)
+  # =======================================================================
+  - type: web_type
+    display_name: Webserver Type Check
+    extra_key: expected
+    extra_val: nginx
+
+  - type: php_fpm_workers
+    display_name: PHP-FPM Worker Saturation
+    # Active workers vs max_children limit.
+
+  - type: php_fpm_queue
+    display_name: PHP-FPM Listen Queue
+    # Monitors rejected connections / queue overflows.
+
+  - type: php_opcache
+    display_name: OPCache Hit Rate & Memory
+
+  - type: web_response_time
+    display_name: Loopback Web Response Time
+    hosts:
+      - display_name: localhost
+        url: http://127.0.0.1/
+    # Synthetic response test via localhost loopback.
+
+  # =======================================================================
+  # 7. NFS
+  # =======================================================================
+  - type: nfs_exports
+    display_name: NFS Exports Availability
+    # Checks if exports are successfully exported from the server.
+
+  - type: nfs_mounts
+    display_name: NFS Client Mounts
+    # Checks if exports are actually mounted on the local node.
+
+  - type: nfs_rw_test
+    display_name: NFS Read/Write Validation
+    extra_key: mountpoint
+    extra_val: /mnt/nfs_share
+
+  - type: nfs_iowait
+    display_name: NFS IO Wait Time
+    # Client node metric to detect hanging NFS operations.
+
+  - type: nfs_inode
+    display_name: NFS Server Inode Usage
+
+  # =======================================================================
+  # 8. NEXTCLOUD APPLICATION
+  # =======================================================================
+  - type: nc_cron
+    display_name: Cron Execution Timestamp
+    # Validates if background jobs are actively running.
+
+  - type: url_reachable
+    display_name: Serverinfo API Health Status
+    hosts:
+      - display_name: nextcloud-api
+        url: https://nextcloud.local/ocs/v2.php/apps/serverinfo/api/1.0/info?format=json
+    # Pulls health status natively (could also be done via OCC).
+
+  - type: nc_users
+    display_name: Active Users / Logged-in Sessions
+
+  - type: nc_log_errors
+    display_name: Nextcloud Log Error Rate
+    extra_key: logfile
+    extra_val: /var/www/nextcloud/data/nextcloud.log
+    # Counts new "Error" or "Fatal" lines in nextcloud.log since last cycle.
+
+  # =======================================================================
+  # 9. SYSTEM
+  # =======================================================================
+  - type: disk_io
+    display_name: Disk I/O Metrics
+
+  - type: disk_usage
+    display_name: Root Partition Usage
+    extra_key: mount
+    extra_val: /
+
+  - type: cpu
+    display_name: CPU Usage
+    # Extracted via /proc/stat
+
+  - type: ram
+    display_name: RAM Usage
+    # Extracted via /proc/meminfo
+
+  - type: load_average
+    display_name: System Load Average (1m, 5m, 15m)
