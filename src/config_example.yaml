@@ -1,0 +1,41 @@
+master:
+  host: 10.0.0.10
+  port: 9000
+
+agent:
+  display_name: myloadbalancer
+  interval_sec: 10
+
+tests:
+  - type: hostname
+    display_name: Local Hostname
+
+  - type: cpu
+    display_name: CPU Usage
+
+  - type: ram
+    display_name: RAM Usage
+
+  - type: url_reachable
+    display_name: Nextcloud1 Reachability
+    hosts:
+      - display_name: nextcloud1
+        url: https://nextcloud1.xyz.local/status.php
+
+  - type: url_reachable
+    display_name: Nextcloud2 Reachability
+    hosts:
+      - display_name: nextcloud2
+        url: https://nextcloud2.xyz.local/status.php
+
+  - type: tcp_connect
+    display_name: MariaDB Port Check
+    hosts:
+      - display_name: db-master
+        host: 10.0.0.20
+        port: 3306
+
+  - type: service_status
+    display_name: HAProxy Service
+    extra_key: unit
+    extra_val: haproxy.service
