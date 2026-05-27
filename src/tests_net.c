@@ -1,153 +1,86 @@
 #include "framework.h"
 #include <string.h>
-#include <unistd.h>
-#include <time.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <unistd.h>
 #include <sys/socket.h>
-#include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <fcntl.h>
-#include <errno.h>
+#include <netdb.h>
 
-/* Helper for standard epoch timestamps */
 static long long get_timestamp(void) {
     return (long long)time(NULL);
 }
 
-/* Helper for safe string truncation */
 static void safe_copy(char *dst, const char *src, size_t max) {
-    strncpy(dst, src, max - 1);
-    dst[max - 1] = '\0';
+    snprintf(dst, max, "%s", src);
 }
-
-/* =========================================================================
- * TEST: hostname
- * Retrieves the local system hostname.
- * ========================================================================= */
-static int net_hostname_collect(const test_entry_t *cfg, test_result_t *results, size_t max_results, size_t *out_count) {
-    if (max_results < 1) return -1;
-    
-    char host[256] = {0};
-    int ok = (gethostname(host, sizeof(host)) == 0) ? 1 : 0;
-    
-    test_result_t *r = &results[0];
-    safe_copy(r->type, cfg->type, CONFIG_MAX_STR);
-    safe_copy(r->display_name, cfg->display_name, CONFIG_MAX_STR);
-    r->ok = ok;
-    r->value = ok ? 1.0 : 0.0;
-    safe_copy(r->unit, "status", sizeof(r->unit));
-    
-    if (ok) {
-        safe_copy(r->detail, host, sizeof(r->detail));
-    } else {
-        safe_copy(r->detail, "Failed to read hostname", sizeof(r->detail));
-    }
-    r->timestamp = get_timestamp();
-    
-    *out_count = 1;
-    return 0;
-}
-
-const test_module_t mod_hostname = {
-    .type_name = "hostname",
-    .init = NULL,
-    .collect = net_hostname_collect,
-    .shutdown = NULL
-};
 
 /* =========================================================================
  * TEST: tcp_connect
- * Performs a non-blocking TCP connection test to verify port reachability.
- * Uses the config 'hosts' array (host + port).
  * ========================================================================= */
 static int net_tcp_connect_collect(const test_entry_t *cfg, test_result_t *results, size_t max_results, size_t *out_count) {
-    *out_count = 0;
+    if (max_results < 1) return -1;
+    test_result_t *r = &results[0];
+    *out_count = 1;
     
-    for (size_t i = 0; i < cfg->host_count && *out_count < max_results; i++) {
-        const host_entry_t *h = &cfg->hosts[i];
-        test_result_t *r = &results[*out_count];
-        
-        safe_copy(r->type, cfg->type, CONFIG_MAX_STR);
-        
-        /* Combine test display name with host display name securely */
-        snprintf(r->display_name, CONFIG_MAX_STR, "%.100s (%.100s)", cfg->display_name, h->display_name);
-        r->timestamp = get_timestamp();
-        
-        int sock = socket(AF_INET, SOCK_STREAM, 0);
-        if (sock < 0) {
-            r->ok = 0;
-            r->value = 0.0;
-            safe_copy(r->detail, "Failed to create socket", sizeof(r->detail));
-        } else {
-            struct sockaddr_in addr;
-            memset(&addr, 0, sizeof(addr));
-            addr.sin_family = AF_INET;
-            addr.sin_port = htons(h->port);
-            
-            if (inet_pton(AF_INET, h->host, &addr.sin_addr) <= 0) {
-                r->ok = 0;
-                r->value = 0.0;
-                safe_copy(r->detail, "Invalid IP address", sizeof(r->detail));
-                close(sock);
-                (*out_count)++;
-                continue;
-            }
-            
-            /* Set socket to non-blocking to enforce a timeout */
-            int flags = fcntl(sock, F_GETFL, 0);
-            fcntl(sock, F_SETFL, flags | O_NONBLOCK);
-            
-            int res = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
-            if (res < 0 && errno == EINPROGRESS) {
-                /* Wait for connection to complete or timeout (e.g., 2 seconds) */
-                struct timeval tv = { .tv_sec = 2, .tv_usec = 0 };
-                fd_set fdset;
-                FD_ZERO(&fdset);
-                FD_SET(sock, &fdset);
-                
-                res = select(sock + 1, NULL, &fdset, NULL, &tv);
-                if (res == 1) {
-                    /* Socket is writable, check for socket errors */
-                    int so_error;
-                    socklen_t len = sizeof(so_error);
-                    getsockopt(sock, SOL_SOCKET, SO_ERROR, &so_error, &len);
-                    if (so_error == 0) res = 0; /* Success */
-                    else res = -1; /* Failed */
-                } else {
-                    res = -1; /* Timeout or error */
-                }
-            }
-            
-            if (res == 0) {
-                r->ok = 1;
-                r->value = 1.0;
-                safe_copy(r->unit, "boolean", sizeof(r->unit));
-                snprintf(r->detail, sizeof(r->detail), "Connected to %.100s:%d", h->host, h->port);
-            } else {
-                r->ok = 0;
-                r->value = 0.0;
-                safe_copy(r->unit, "boolean", sizeof(r->unit));
-                snprintf(r->detail, sizeof(r->detail), "Connection timeout/refused to %.100s:%d", h->host, h->port);
-            }
-            close(sock);
-        }
-        (*out_count)++;
+    safe_copy(r->type, cfg->type, CONFIG_MAX_STR);
+    safe_copy(r->display_name, cfg->display_name, CONFIG_MAX_STR);
+    r->timestamp = get_timestamp();
+
+    if (cfg->host_count == 0 || strlen(cfg->hosts[0].host) == 0 || cfg->hosts[0].port <= 0) {
+        r->ok = 0; r->value = 0;
+        safe_copy(r->detail, "Invalid host configuration (missing host or port)", sizeof(r->detail));
+        return 0;
+    }
+
+    struct hostent *he = gethostbyname(cfg->hosts[0].host);
+    if (!he) {
+        r->ok = 0; r->value = 0;
+        snprintf(r->detail, sizeof(r->detail), "DNS resolution failed for %.100s", cfg->hosts[0].host);
+        return 0;
+    }
+
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        r->ok = 0; r->value = 0;
+        safe_copy(r->detail, "Socket creation failed", sizeof(r->detail));
+        return 0;
+    }
+
+    /* Set a 3-second timeout */
+    struct timeval tv;
+    tv.tv_sec = 3; tv.tv_usec = 0;
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof tv);
+
+    struct sockaddr_in server;
+    server.sin_family = AF_INET;
+    server.sin_port = htons(cfg->hosts[0].port);
+    server.sin_addr = *((struct in_addr *)he->h_addr_list[0]);
+
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    int res = connect(sock, (struct sockaddr *)&server, sizeof(server));
+    clock_gettime(CLOCK_MONOTONIC, &end);
+
+    close(sock);
+
+    if (res == 0) {
+        double ms = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_nsec - start.tv_nsec) / 1000000.0;
+        r->ok = 1;
+        r->value = ms;
+        safe_copy(r->unit, "ms", sizeof(r->unit));
+        snprintf(r->detail, sizeof(r->detail), "Connected in %.2f ms", ms);
+    } else {
+        r->ok = 0; r->value = 0;
+        safe_copy(r->detail, "Connection refused or timed out", sizeof(r->detail));
     }
     return 0;
 }
 
-const test_module_t mod_tcp_connect = {
-    .type_name = "tcp_connect",
-    .init = NULL,
-    .collect = net_tcp_connect_collect,
-    .shutdown = NULL
-};
+const test_module_t mod_net_tcp_connect = { .type_name = "tcp_connect", .collect = net_tcp_connect_collect };
 
-/* =========================================================================
- * REGISTRY EXPORT
- * ========================================================================= */
-void register_network_tests(void) {
-    framework_register(&mod_hostname);
-    framework_register(&mod_tcp_connect);
+void register_net_tests(void) {
+    framework_register(&mod_net_tcp_connect);
 }
