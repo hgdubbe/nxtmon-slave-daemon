@@ -45,7 +45,7 @@ typedef enum {
     S_TEST_HOST_ENTRY
 } parse_state_t;
 
-int config_parse(const char *path, config_t *cfg)
+int parse_yaml_config(const char *path, config_t *cfg)
 {
     if (!path || !cfg) return -1;
     memset(cfg, 0, sizeof(*cfg));
