@@ -14,11 +14,9 @@ static void safe_copy(char *dst, const char *src, size_t max) {
     dst[max - 1] = '\0';
 }
 
-/* Helper to establish a MariaDB connection using config params.
- * Expects cfg->hosts[0] for host/port. 
- * If extra_key="credentials", expects extra_val="user:password".
- * Returns an active MYSQL handle or NULL on failure.
- */
+/* =========================================================================
+ * CONNECTION HELPER
+ * ========================================================================= */
 static MYSQL* db_connect_helper(const test_entry_t *cfg, char *err_buf, size_t err_max) {
     MYSQL *conn = mysql_init(NULL);
     if (!conn) {
@@ -56,6 +54,217 @@ static MYSQL* db_connect_helper(const test_entry_t *cfg, char *err_buf, size_t e
     }
     return conn;
 }
+
+/* =========================================================================
+ * TEST: db_latency_read
+ * Queries performance_schema for average SELECT latency in ms.
+ * ========================================================================= */
+static int db_latency_read_collect(const test_entry_t *cfg, test_result_t *results, size_t max_results, size_t *out_count) {
+    if (max_results < 1) return -1;
+    test_result_t *r = &results[0];
+    *out_count = 1;
+    
+    safe_copy(r->type, cfg->type, CONFIG_MAX_STR);
+    safe_copy(r->display_name, cfg->display_name, CONFIG_MAX_STR);
+    r->timestamp = get_timestamp();
+
+    char err[256];
+    MYSQL *conn = db_connect_helper(cfg, err, sizeof(err));
+    if (!conn) {
+        r->ok = 0; r->value = 0; safe_copy(r->detail, err, sizeof(r->detail));
+        return 0;
+    }
+
+    double latency_ms = -1.0;
+    const char *query = "SELECT SUM_TIMER_WAIT / COUNT_STAR / 1000000000.0 FROM performance_schema.events_statements_summary_global_by_event_name WHERE EVENT_NAME = 'statement/sql/select' AND COUNT_STAR > 0";
+    
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES *res = mysql_store_result(conn);
+        if (res) {
+            MYSQL_ROW row = mysql_fetch_row(res);
+            if (row && row[0]) latency_ms = atof(row[0]);
+            mysql_free_result(res);
+        }
+    }
+    mysql_close(conn);
+
+    if (latency_ms >= 0) {
+        r->ok = 1; r->value = latency_ms;
+        safe_copy(r->unit, "ms", sizeof(r->unit));
+        snprintf(r->detail, sizeof(r->detail), "Read latency: %.3f ms", latency_ms);
+    } else {
+        r->ok = 0; r->value = 0;
+        safe_copy(r->detail, "Failed to query performance_schema (is it enabled?)", sizeof(r->detail));
+    }
+    return 0;
+}
+const test_module_t mod_db_latency_read = { .type_name = "db_latency_read", .collect = db_latency_read_collect };
+
+/* =========================================================================
+ * TEST: db_latency_write
+ * Queries performance_schema for average INSERT/UPDATE/DELETE latency in ms.
+ * ========================================================================= */
+static int db_latency_write_collect(const test_entry_t *cfg, test_result_t *results, size_t max_results, size_t *out_count) {
+    if (max_results < 1) return -1;
+    test_result_t *r = &results[0];
+    *out_count = 1;
+    
+    safe_copy(r->type, cfg->type, CONFIG_MAX_STR);
+    safe_copy(r->display_name, cfg->display_name, CONFIG_MAX_STR);
+    r->timestamp = get_timestamp();
+
+    char err[256];
+    MYSQL *conn = db_connect_helper(cfg, err, sizeof(err));
+    if (!conn) {
+        r->ok = 0; r->value = 0; safe_copy(r->detail, err, sizeof(r->detail));
+        return 0;
+    }
+
+    double latency_ms = -1.0;
+    const char *query = "SELECT SUM(SUM_TIMER_WAIT) / SUM(COUNT_STAR) / 1000000000.0 FROM performance_schema.events_statements_summary_global_by_event_name WHERE EVENT_NAME IN ('statement/sql/insert', 'statement/sql/update', 'statement/sql/delete') AND COUNT_STAR > 0";
+    
+    if (mysql_query(conn, query) == 0) {
+        MYSQL_RES *res = mysql_store_result(conn);
+        if (res) {
+            MYSQL_ROW row = mysql_fetch_row(res);
+            if (row && row[0]) latency_ms = atof(row[0]);
+            mysql_free_result(res);
+        }
+    }
+    mysql_close(conn);
+
+    if (latency_ms >= 0) {
+        r->ok = 1; r->value = latency_ms;
+        safe_copy(r->unit, "ms", sizeof(r->unit));
+        snprintf(r->detail, sizeof(r->detail), "Write latency: %.3f ms", latency_ms);
+    } else {
+        r->ok = 0; r->value = 0;
+        safe_copy(r->detail, "Failed to query performance_schema for writes", sizeof(r->detail));
+    }
+    return 0;
+}
+const test_module_t mod_db_latency_write = { .type_name = "db_latency_write", .collect = db_latency_write_collect };
+
+/* =========================================================================
+ * TEST: db_master_slave
+ * Checks if the node is operating as a Replication Master or Slave.
+ * ========================================================================= */
+static int db_master_slave_collect(const test_entry_t *cfg, test_result_t *results, size_t max_results, size_t *out_count) {
+    if (max_results < 1) return -1;
+    test_result_t *r = &results[0];
+    *out_count = 1;
+    
+    safe_copy(r->type, cfg->type, CONFIG_MAX_STR);
+    safe_copy(r->display_name, cfg->display_name, CONFIG_MAX_STR);
+    r->timestamp = get_timestamp();
+
+    char err[256];
+    MYSQL *conn = db_connect_helper(cfg, err, sizeof(err));
+    if (!conn) {
+        r->ok = 0; r->value = 0; safe_copy(r->detail, err, sizeof(r->detail));
+        return 0;
+    }
+
+    int is_slave = 0;
+    int success = 0;
+    if (mysql_query(conn, "SHOW SLAVE STATUS") == 0) {
+        success = 1;
+        MYSQL_RES *res = mysql_store_result(conn);
+        if (res) {
+            if (mysql_fetch_row(res)) is_slave = 1;
+            mysql_free_result(res);
+        }
+    }
+    mysql_close(conn);
+
+    if (success) {
+        r->ok = 1;
+        r->value = is_slave ? 0.0 : 1.0; /* 1.0 = Master, 0.0 = Slave */
+        safe_copy(r->unit, "boolean", sizeof(r->unit));
+        snprintf(r->detail, sizeof(r->detail), "Node is %s", is_slave ? "Slave" : "Master");
+    } else {
+        r->ok = 0; r->value = 0;
+        safe_copy(r->detail, "Failed to execute SHOW SLAVE STATUS", sizeof(r->detail));
+    }
+    return 0;
+}
+const test_module_t mod_db_master_slave = { .type_name = "db_master_slave", .collect = db_master_slave_collect };
+
+/* =========================================================================
+ * TEST: db_innodb_buffer
+ * Returns 2 metrics: Buffer Pool Usage Fraction & Buffer Pool Hit Rate.
+ * ========================================================================= */
+static int db_innodb_buffer_collect(const test_entry_t *cfg, test_result_t *results, size_t max_results, size_t *out_count) {
+    if (max_results < 2) return -1; /* Needs 2 slots */
+    
+    char err[256];
+    MYSQL *conn = db_connect_helper(cfg, err, sizeof(err));
+    if (!conn) {
+        *out_count = 1;
+        test_result_t *r = &results[0];
+        safe_copy(r->type, cfg->type, CONFIG_MAX_STR);
+        safe_copy(r->display_name, cfg->display_name, CONFIG_MAX_STR);
+        r->timestamp = get_timestamp();
+        r->ok = 0; r->value = 0; safe_copy(r->detail, err, sizeof(r->detail));
+        return 0;
+    }
+
+    unsigned long long reads = 0, requests = 0, pages_data = 0, pages_total = 0;
+    int success = 0;
+    
+    if (mysql_query(conn, "SHOW GLOBAL STATUS WHERE Variable_name IN ('Innodb_buffer_pool_reads', 'Innodb_buffer_pool_read_requests', 'Innodb_buffer_pool_pages_data', 'Innodb_buffer_pool_pages_total')") == 0) {
+        success = 1;
+        MYSQL_RES *res = mysql_store_result(conn);
+        if (res) {
+            MYSQL_ROW row;
+            while ((row = mysql_fetch_row(res))) {
+                if (!row[0] || !row[1]) continue;
+                if (strcmp(row[0], "Innodb_buffer_pool_reads") == 0) reads = strtoull(row[1], NULL, 10);
+                else if (strcmp(row[0], "Innodb_buffer_pool_read_requests") == 0) requests = strtoull(row[1], NULL, 10);
+                else if (strcmp(row[0], "Innodb_buffer_pool_pages_data") == 0) pages_data = strtoull(row[1], NULL, 10);
+                else if (strcmp(row[0], "Innodb_buffer_pool_pages_total") == 0) pages_total = strtoull(row[1], NULL, 10);
+            }
+            mysql_free_result(res);
+        }
+    }
+    mysql_close(conn);
+
+    if (success && pages_total > 0 && requests > 0) {
+        long long ts = get_timestamp();
+        
+        /* Metric 1: Usage */
+        test_result_t *r1 = &results[0];
+        safe_copy(r1->type, cfg->type, CONFIG_MAX_STR);
+        snprintf(r1->display_name, CONFIG_MAX_STR, "%.100s (Usage)", cfg->display_name);
+        r1->timestamp = ts;
+        r1->ok = 1;
+        r1->value = (double)pages_data / pages_total;
+        safe_copy(r1->unit, "fraction", sizeof(r1->unit));
+        snprintf(r1->detail, sizeof(r1->detail), "Used: %llu / %llu pages", pages_data, pages_total);
+        
+        /* Metric 2: Hit Rate */
+        test_result_t *r2 = &results[1];
+        safe_copy(r2->type, cfg->type, CONFIG_MAX_STR);
+        snprintf(r2->display_name, CONFIG_MAX_STR, "%.100s (Hit Rate)", cfg->display_name);
+        r2->timestamp = ts;
+        r2->ok = 1;
+        r2->value = 1.0 - ((double)reads / requests);
+        safe_copy(r2->unit, "fraction", sizeof(r2->unit));
+        snprintf(r2->detail, sizeof(r2->detail), "Hit rate based on %llu reads vs %llu requests", reads, requests);
+        
+        *out_count = 2;
+    } else {
+        *out_count = 1;
+        test_result_t *r = &results[0];
+        safe_copy(r->type, cfg->type, CONFIG_MAX_STR);
+        safe_copy(r->display_name, cfg->display_name, CONFIG_MAX_STR);
+        r->timestamp = get_timestamp();
+        r->ok = 0; r->value = 0;
+        safe_copy(r->detail, "Failed to calculate InnoDB metrics", sizeof(r->detail));
+    }
+    return 0;
+}
+const test_module_t mod_db_innodb_buffer = { .type_name = "db_innodb_buffer", .collect = db_innodb_buffer_collect };
 
 /* =========================================================================
  * TEST: db_connections
@@ -161,6 +370,8 @@ const test_module_t mod_db_rw_ro = { .type_name = "db_rw_ro", .collect = db_rw_r
 /* =========================================================================
  * TEST: db_gtid
  * Retrieves the current GTID position (MariaDB specific).
+ * Note: Framework inherently adds a timestamp to all collected test results.
+ * This directly supports the sync-status goal (timestamped GTID comparison).
  * ========================================================================= */
 static int db_gtid_collect(const test_entry_t *cfg, test_result_t *results, size_t max_results, size_t *out_count) {
     if (max_results < 1) return -1;
@@ -206,6 +417,10 @@ const test_module_t mod_db_gtid = { .type_name = "db_gtid", .collect = db_gtid_c
  * REGISTRY EXPORT
  * ========================================================================= */
 void register_db_tests(void) {
+    framework_register(&mod_db_latency_read);
+    framework_register(&mod_db_latency_write);
+    framework_register(&mod_db_master_slave);
+    framework_register(&mod_db_innodb_buffer);
     framework_register(&mod_db_connections);
     framework_register(&mod_db_rw_ro);
     framework_register(&mod_db_gtid);
