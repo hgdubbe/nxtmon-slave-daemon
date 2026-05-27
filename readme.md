@@ -1,0 +1,1 @@
+#nxtmon-slave-daemon
