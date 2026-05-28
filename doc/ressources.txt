@@ -1,0 +1,7 @@
+https://www.c-rieger.de/lab-notizen-zum-skalierten-nextcloud-system/ #the infrastructure this monizoring system will work on
+tests.txt #the tests the monitoring system should be able to perform
+plan.md #draft of a crude step-by-step plan of action to realizeze the project
+readme.md #readme
+install.sh # automated installer
+default.yaml #default configuration containing every single test
+nxtmon-slave.service #service file for installation as systemd-service
