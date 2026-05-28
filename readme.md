@@ -26,7 +26,7 @@ We provide an automated installer that checks for dependencies, dynamically buil
 Run the following command on the target Linux machine (Debian/Ubuntu recommended):
 
 ```bash
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/main/install.sh)"
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/test/install.sh)"
 ```
 
 The installer will prompt you for:
