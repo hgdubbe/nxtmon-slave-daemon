@@ -38,15 +38,54 @@ echo -e "${BLUE}======================================================${NC}\n"
 
 # 1. Dependency Check & Installation
 echo -e "${YELLOW}[1/5] Checking System Dependencies...${NC}"
-read -p "Do you want to check and install missing apt dependencies? (y/n): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "Installing build-essential, libyaml-dev, libcurl4-openssl-dev, libmariadb-dev-compat, libhiredis-dev, libcjson-dev, libssl-dev..."
-    sudo apt-get update
-    sudo apt-get install -y build-essential libyaml-dev libcurl4-openssl-dev libmariadb-dev libmariadb-dev-compat libhiredis-dev libcjson-dev libssl-dev
-    echo -e "${GREEN}Dependencies installed successfully!${NC}\n"
+
+DEPS=("build-essential" "libyaml-dev" "libcurl4-openssl-dev" "libmariadb-dev" "libmariadb-dev-compat" "libhiredis-dev" "libcjson-dev" "libssl-dev")
+MISSING_DEPS=()
+
+for pkg in "${DEPS[@]}"; do
+    if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+        MISSING_DEPS+=("$pkg")
+    fi
+done
+
+if [ ${#MISSING_DEPS[@]} -eq 0 ]; then
+    echo -e "${GREEN}All required dependencies are already installed!${NC}\n"
 else
-    echo -e "Skipping dependency installation.\n"
+    echo -e "The following dependencies are missing:"
+    for pkg in "${MISSING_DEPS[@]}"; do
+        echo -e "  - $pkg"
+    done
+    echo ""
+    read -p "Do you want to install these missing dependencies? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "Updating apt cache silently..."
+        sudo apt-get update -qq >/dev/null 2>&1
+
+        echo -e "Installing dependencies:"
+        HAS_ERROR=0
+        for pkg in "${MISSING_DEPS[@]}"; do
+            echo -ne "  [ ] $pkg \r"
+            if sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq "$pkg" >apt_error.log 2>&1; then
+                echo -e "  [${GREEN}✓${NC}] $pkg"
+            else
+                echo -e "  [${RED}X${NC}] $pkg"
+                echo -e "\n${RED}Failed to install $pkg. Error details:${NC}"
+                cat apt_error.log
+                HAS_ERROR=1
+            fi
+        done
+        rm -f apt_error.log
+
+        if [ $HAS_ERROR -eq 0 ]; then
+            echo -e "${GREEN}\nAll missing dependencies installed successfully!${NC}\n"
+        else
+            echo -e "${RED}\nSome dependencies failed to install. Please resolve the errors above.${NC}"
+            exit 1
+        fi
+    else
+        echo -e "Skipping dependency installation. (Compilation might fail)\n"
+    fi
 fi
 
 # 2. Compilation
@@ -58,7 +97,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo -e "${RED}Error: Makefile not found in the current directory.${NC}"
         exit 1
     fi
-    make clean
+    make clean >/dev/null 2>&1
     make
     if [ ! -f "nxtmon-slave" ]; then
         echo -e "${RED}Compilation failed. Binary 'nxtmon-slave' not generated.${NC}"
@@ -121,7 +160,7 @@ WantedBy=multi-user.target
 EOF
 
     sudo systemctl daemon-reload
-    sudo systemctl enable nxtmon-slave.service
+    sudo systemctl enable nxtmon-slave.service >/dev/null 2>&1
     sudo systemctl start nxtmon-slave.service
     
     echo -e "${GREEN}systemd service installed and started!${NC}"
