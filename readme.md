@@ -6,6 +6,9 @@ Role: The slave daemon (nxtmond --role slave) is a modular, lightweight data-col
 install with:
 sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/main/install.sh)"
 
+enable/disable/start/stop/status service
+sudo systemctl enable/disable/start/stop/status nxtmon-slave.service
+
 Architecture Paradigm: The slave has no concept of "Host Roles" (e.g., it does not know what a "loadbalancer" is). It only knows how to execute atomic "Tests" (e.g., cpu, url_reachable, tcp_connect) defined in a YAML configuration file.
 --test / --dry-run: load config, run all tests once, print JSON to stdout.
 
