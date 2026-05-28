@@ -1,0 +1,216 @@
+schema_version: 2
+
+agent:
+  display_name: "default-local-node"
+
+tests:
+  # ==========================================
+  # System & Hardware
+  # ==========================================
+  - type: cpu
+    display_name: "CPU Usage"
+  
+  - type: ram
+    display_name: "RAM Usage"
+  
+  - type: load_average
+    display_name: "System Load Averages"
+  
+  - type: disk_io
+    display_name: "Disk I/O Metrics"
+  
+  - type: disk_usage
+    display_name: "Root Partition Usage"
+    extra_val: "/"
+
+  # ==========================================
+  # OS Services
+  # ==========================================
+  - type: service_status
+    display_name: "MariaDB Service State"
+    extra_val: "mariadb"
+
+  - type: service_pid
+    display_name: "Redis PID Check"
+    extra_val: "redis-server"
+
+  # ==========================================
+  # Database (MariaDB/MySQL)
+  # ==========================================
+  # Note: Requires a monitoring user in the DB
+  - type: db_latency_write
+    display_name: "Database Write Latency"
+    extra_key: "auth"
+    extra_val: "monitor:password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  - type: db_latency_read
+    display_name: "Database Read Latency"
+    extra_key: "auth"
+    extra_val: "monitor:password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  - type: db_master_slave
+    display_name: "Replication Role Check"
+    extra_key: "auth"
+    extra_val: "monitor:password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  - type: db_rw_ro
+    display_name: "Read-Write / Read-Only State"
+    extra_key: "auth"
+    extra_val: "monitor:password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  - type: db_gtid
+    display_name: "Current GTID Position"
+    extra_key: "auth"
+    extra_val: "monitor:password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  - type: db_connections
+    display_name: "Available DB Connections"
+    extra_key: "auth"
+    extra_val: "monitor:password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  - type: db_innodb_buffer
+    display_name: "InnoDB Buffer Pool Hit Rate"
+    extra_key: "auth"
+    extra_val: "monitor:password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  # ==========================================
+  # Redis
+  # ==========================================
+  - type: redis_sync_channel
+    display_name: "Redis Sync Channel Status"
+    extra_key: "auth"
+    extra_val: "redis_password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 6379
+
+  - type: redis_sync_status
+    display_name: "Redis Replication Lag"
+    extra_key: "auth"
+    extra_val: "redis_password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 6379
+
+  - type: redis_memory
+    display_name: "Redis Memory Usage"
+    extra_key: "auth"
+    extra_val: "redis_password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 6379
+
+  - type: redis_evicted_keys
+    display_name: "Evicted Keys Rate"
+    extra_key: "auth"
+    extra_val: "redis_password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 6379
+
+  - type: redis_clients
+    display_name: "Connected Redis Clients"
+    extra_key: "auth"
+    extra_val: "redis_password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 6379
+
+  # ==========================================
+  # Web & PHP
+  # ==========================================
+  - type: web_type
+    display_name: "Webserver Type Check"
+    hosts:
+      - url: "http://127.0.0.1/server-status"
+
+  - type: php_fpm_workers
+    display_name: "PHP-FPM Worker Saturation"
+    hosts:
+      - url: "http://127.0.0.1/fpm-status?json"
+
+  - type: php_fpm_queue
+    display_name: "PHP-FPM Listen Queue"
+    hosts:
+      - url: "http://127.0.0.1/fpm-status?json"
+
+  - type: php_opcache
+    display_name: "OPCache Hit Rate & Memory"
+    hosts:
+      - url: "http://127.0.0.1/opcache-status.php"
+
+  - type: web_response_time
+    display_name: "Loopback Web Response Time"
+    hosts:
+      - url: "http://127.0.0.1/status.php"
+
+  # ==========================================
+  # Load Balancer / Proxy
+  # ==========================================
+  - type: lb_backend_state
+    display_name: "HAProxy Backend State"
+    extra_val: "/run/haproxy/admin.sock"
+
+  - type: ssl_cert
+    display_name: "Local SSL Cert Expiry"
+    hosts:
+      - host: "127.0.0.1"
+        port: 443
+
+  # ==========================================
+  # Storage (NFS)
+  # ==========================================
+  - type: nfs_exports
+    display_name: "NFS Exports Availability"
+    extra_val: "/srv/nfs/nextcloud"
+
+  - type: nfs_mounts
+    display_name: "NFS Client Mounts"
+    extra_val: "/mnt/nfs_share"
+
+  - type: nfs_rw_test
+    display_name: "NFS Read/Write Validation"
+    extra_val: "/mnt/nfs_share"
+
+  - type: nfs_iowait
+    display_name: "NFS IO Wait Time"
+
+  - type: nfs_inode
+    display_name: "NFS Server Inode Usage"
+    extra_val: "/mnt/nfs_share"
+
+  # ==========================================
+  # Nextcloud Application
+  # ==========================================
+  - type: nc_cron
+    display_name: "Cron Execution Timestamp"
+    extra_val: "/var/www/nextcloud/data/cron.lock"
+
+  - type: nc_users
+    display_name: "Active Users / Logged-in Sessions"
+    extra_val: "/var/www/nextcloud/occ"
+
+  - type: nc_log_errors
+    display_name: "Nextcloud Log Error Rate"
+    extra_val: "/var/www/nextcloud/data/nextcloud.log"
