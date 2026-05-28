@@ -15,8 +15,8 @@ NC='\033[0m'
 # Check if user wants to uninstall
 if [ "$1" == "--uninstall" ]; then
     echo -e "${RED}Uninstalling nxtmon-slave-daemon...${NC}"
-    sudo systemctl stop nxtmon-slave.service || true
-    sudo systemctl disable nxtmon-slave.service || true
+    sudo systemctl stop nxtmon-slave.service >/dev/null 2>&1 || true
+    sudo systemctl disable nxtmon-slave.service >/dev/null 2>&1 || true
     sudo rm -f /etc/systemd/system/nxtmon-slave.service
     sudo systemctl daemon-reload
     sudo rm -f /usr/local/bin/nxtmon-slave
@@ -35,6 +35,15 @@ fi
 echo -e "${BLUE}======================================================${NC}"
 echo -e "${GREEN}      nxtmon-slave-daemon Auto-Installer${NC}"
 echo -e "${BLUE}======================================================${NC}\n"
+
+# 0. Environment Setup
+# If not run inside the repo, clone it into a temp dir so curl | bash works anywhere
+if [ ! -d "src" ] || [ ! -f "src/main.c" ]; then
+    echo -e "${YELLOW}Not inside repository. Cloning from GitHub...${NC}"
+    TEMP_DIR=$(mktemp -d)
+    git clone -q https://github.com/hgdubbe/nxtmon-slave-daemon.git "$TEMP_DIR"
+    cd "$TEMP_DIR"
+fi
 
 # 1. Dependency Check & Installation
 echo -e "${YELLOW}[1/5] Checking System Dependencies...${NC}"
@@ -93,17 +102,39 @@ echo -e "${YELLOW}[2/5] Compiling nxtmon-slave...${NC}"
 read -p "Do you want to compile the daemon now? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
+    # Auto-generate Makefile if it wasn't committed to the repo
     if [ ! -f "Makefile" ]; then
-        echo -e "${RED}Error: Makefile not found in the current directory.${NC}"
+        echo -e "Makefile missing. Generating it on the fly..."
+        cat > Makefile << 'EOF'
+CC = gcc
+CFLAGS = -Wall -O2 -Wno-stringop-truncation -Wno-misleading-indentation -Wno-discarded-qualifiers
+LDFLAGS = -lyaml -lcurl -lmariadb -lhiredis -lcjson -lssl -lcrypto
+SRC_DIR = src
+OBJ_DIR = obj
+SRCS = $(wildcard $(SRC_DIR)/*.c)
+OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
+TARGET = nxtmon-slave
+all: $(TARGET)
+$(TARGET): $(OBJS)
+	$(CC) $(OBJS) -o $(TARGET) $(LDFLAGS)
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+$(OBJ_DIR):
+	mkdir -p $(OBJ_DIR)
+clean:
+	rm -rf $(OBJ_DIR) $(TARGET)
+.PHONY: all clean
+EOF
+    fi
+
+    make clean >/dev/null 2>&1 || true
+    if make >build.log 2>&1; then
+        echo -e "${GREEN}Compilation successful!${NC}\n"
+    else
+        echo -e "${RED}Compilation failed. Build log:${NC}"
+        cat build.log
         exit 1
     fi
-    make clean >/dev/null 2>&1
-    make
-    if [ ! -f "nxtmon-slave" ]; then
-        echo -e "${RED}Compilation failed. Binary 'nxtmon-slave' not generated.${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}Compilation successful!${NC}\n"
 else
     if [ ! -f "nxtmon-slave" ]; then
         echo -e "${RED}Binary 'nxtmon-slave' not found. You must compile it first.${NC}"
@@ -161,7 +192,7 @@ EOF
 
     sudo systemctl daemon-reload
     sudo systemctl enable nxtmon-slave.service >/dev/null 2>&1
-    sudo systemctl start nxtmon-slave.service
+    sudo systemctl restart nxtmon-slave.service
     
     echo -e "${GREEN}systemd service installed and started!${NC}"
     echo -e "Check status with: ${BLUE}sudo systemctl status nxtmon-slave${NC}\n"
@@ -173,5 +204,5 @@ fi
 echo -e "${YELLOW}[5/5] All Done!${NC}"
 echo -e "The daemon will poll and push telemetry every 10 seconds."
 echo -e "Make sure to edit ${BLUE}/etc/nxtmon/config.yaml${NC} with your master node details."
-echo -e "To uninstall in the future, run: ${BLUE}./install.sh --uninstall${NC}"
+echo -e "To uninstall in the future, run: ${BLUE}curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/main/install.sh | sudo bash -s -- --uninstall${NC}"
 echo -e "======================================================\n"
