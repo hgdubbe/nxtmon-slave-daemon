@@ -102,7 +102,6 @@ echo -e "${YELLOW}[2/5] Compiling nxtmon-slave...${NC}"
 read -p "Do you want to compile the daemon now? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    # Auto-generate Makefile if it wasn't committed to the repo
     if [ ! -f "Makefile" ]; then
         echo -e "Makefile missing. Generating it on the fly..."
         cat > Makefile << 'EOF'
@@ -172,10 +171,36 @@ echo -e "${YELLOW}[4/5] Setting up systemd Service...${NC}"
 read -p "Do you want to install and enable the systemd daemon? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
+
+    # Ask for Polling Interval
+    read -p "Enter polling interval in seconds [10]: " INPUT_INTERVAL
+    POLL_INTERVAL=${INPUT_INTERVAL:-10}
+    if ! [[ "$POLL_INTERVAL" =~ ^[0-9]+$ ]]; then
+        echo -e "${YELLOW}Invalid input. Defaulting to 10 seconds.${NC}"
+        POLL_INTERVAL=10
+    fi
+
+    # Ask for Verbosity
+    read -p "Enable verbose logging (prints full payload to systemd logs)? (y/N): " -n 1 -r
+    USER_VERBOSE=$REPLY
+    echo
+
     if [ -f "nxtmon-slave.service" ]; then
         SERVICE_FILE="/etc/systemd/system/nxtmon-slave.service"
         sudo cp nxtmon-slave.service "$SERVICE_FILE"
         sudo chmod 644 "$SERVICE_FILE"
+        
+        # Inject the chosen RestartSec interval
+        if grep -q "^RestartSec=" "$SERVICE_FILE"; then
+            sudo sed -i "s/^RestartSec=.*/RestartSec=$POLL_INTERVAL/" "$SERVICE_FILE"
+        else
+            sudo sed -i "/^\[Service\]/a RestartSec=$POLL_INTERVAL" "$SERVICE_FILE"
+        fi
+        
+        # Suppress stdout spam if verbose is NOT selected
+        if [[ ! $USER_VERBOSE =~ ^[Yy]$ ]]; then
+            sudo sed -i "s|^ExecStart=.*|ExecStart=/bin/bash -c '/usr/local/bin/nxtmon-slave /etc/nxtmon/config.yaml >/dev/null \&\& echo \"Telemetry sweep executed.\"'|" "$SERVICE_FILE"
+        fi
         
         sudo systemctl daemon-reload
         sudo systemctl enable nxtmon-slave.service >/dev/null 2>&1
@@ -192,7 +217,7 @@ fi
 
 # 5. Finish
 echo -e "${YELLOW}[5/5] All Done!${NC}"
-echo -e "The daemon will poll and push telemetry every 10 seconds."
+echo -e "The daemon will poll and push telemetry every 10 seconds (or your chosen interval)."
 echo -e "Make sure to edit ${BLUE}/etc/nxtmon/config.yaml${NC} with your master node details."
 echo -e "To uninstall in the future, run:"
 echo -e "${BLUE}sudo bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/main/install.sh)\" -- --uninstall${NC}"
