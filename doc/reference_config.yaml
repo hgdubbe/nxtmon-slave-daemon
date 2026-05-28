@@ -1,256 +1,276 @@
-# =========================================================================
-# nxtmon-slave-daemon - Complete Reference Configuration
-# =========================================================================
-# This file contains EVERY planned check category documented in the spec.
-# It is designed as a learning resource and a copy-paste template.
-#
-# NOTE: Not all tests are fully implemented in the C backend yet. Checks 
-# rely on the generic 'type', 'extra_key', 'extra_val', and 'hosts' array 
-# parsed by the config engine.
-# =========================================================================
+# Module Configuration Reference
 
-master:
-  host: 10.0.0.10      # IP or hostname of the central nxtmon master
-  port: 9000           # TCP port the master listens on for JSON payloads
+This reference outlines all available telemetry checks for the `nxtmon-slave-daemon`.
+The `type` field must be written exactly as shown below for the daemon to recognize the test.
+
+## Global Configuration Structure
+
+```yaml
+schema_version: 2
 
 agent:
-  display_name: my-reference-node  # How this agent identifies in the JSON payload
-  interval_sec: 10                 # Execution interval in seconds
+  display_name: "my-reference-node"
 
 tests:
-  # =======================================================================
-  # 1. NETWORK CHECKS
-  # =======================================================================
-  - type: hostname
-    display_name: Local Hostname
-    # Retrieves the current system hostname.
+```
 
-  - type: ip-address
-    display_name: Primary IP Address
-    # Retrieves the primary routable IP of the node.
+## 1. System & Hardware Metrics
+*All of these tests are fully implemented and require no special parameters.*
 
-  - type: net_load
-    display_name: Average Network Load
-    # Calculates bandwidth utilization over the interval.
-
-  - type: dns_resolve
-    display_name: Name Resolution Check
-    extra_key: domain
-    extra_val: nextcloud.local
-    # Verifies if local DNS resolution is functioning.
-
-  - type: ping
-    display_name: Core Infrastructure Ping
-    hosts:
-      - display_name: gateway
-        host: 10.0.0.1
-      - display_name: master-db
-        host: 10.0.0.20
-    # ICMP or TCP port 7 echo to verify reachability and latency.
-
-  - type: conntrack
-    display_name: Connection Tracking Table State
-    # Checks for dropped packets / conntrack table saturation.
-
-  # =======================================================================
-  # 2. LOCAL SERVICES
-  # =======================================================================
-  - type: service_status
-    display_name: HAProxy Service State
-    extra_key: unit
-    extra_val: haproxy.service
-    # Checks if a systemd unit is active/running.
-
-  - type: service_port
-    display_name: Nginx Port Check
-    extra_key: port
-    extra_val: "80"
-    # Verifies if the local port is open and listening.
-
-  - type: service_pid
-    display_name: Redis PID Check
-    extra_key: process
-    extra_val: redis-server
-    # Ensures the process is actively running in the process tree.
-
-  - type: service_connections
-    display_name: Active DB Connections
-    extra_key: port
-    extra_val: "3306"
-    # Counts active socket connections to a specific service port.
-
-  # =======================================================================
-  # 3. LOAD BALANCER (Nginx/HAProxy)
-  # =======================================================================
-  - type: lb_backend_state
-    display_name: Nextcloud App Nodes Backend State
-    extra_key: backend_pool
-    extra_val: nextcloud_cluster
-    # Monitors UP/DOWN transitions per backend node.
-
-  - type: lb_sticky_session
-    display_name: Sticky Session Validation
-    # Checks if proxy headers/cookies are propagating correctly.
-
-  - type: lb_connections
-    display_name: Client vs Backend Connections
-    # Compares active incoming clients vs outgoing backend connections.
-
-  - type: ssl_cert
-    display_name: Main Domain SSL Expiry
-    extra_key: domain
-    extra_val: mycloud.example.com
-    # Validates SSL certificate expiration date.
-
-  - type: lb_cache
-    display_name: Proxy Cache Hit/Miss Ratio
-    # Measures caching efficiency (if proxy_cache is used).
-
-  # =======================================================================
-  # 4. DATABASE (MariaDB)
-  # =======================================================================
-  - type: db_latency_write
-    display_name: Database Write Latency
-    
-  - type: db_latency_read
-    display_name: Database Read Latency
-
-  - type: db_master_slave
-    display_name: Replication Role Check
-    # Determines if the node is acting as Master or Slave.
-
-  - type: db_rw_ro
-    display_name: Read-Write / Read-Only State
-    # Verifies if the database is strictly in RO mode (e.g., for slaves).
-
-  - type: db_gtid
-    display_name: Current GTID Position
-
-  - type: db_sync_status
-    display_name: Master/Slave Sync Status
-    # Timestamped comparison of Master/Slave GTID to calculate replication lag.
-
-  - type: db_slow_queries
-    display_name: Slow Query Rate
-
-  - type: db_connections
-    display_name: Available DB Connections
-    # Compares Threads_connected vs max_connections.
-
-  - type: db_innodb_buffer
-    display_name: InnoDB Buffer Pool Hit Rate
-
-  # =======================================================================
-  # 5. REDIS
-  # =======================================================================
-  - type: redis_sync_channel
-    display_name: Redis Sync Channel Status
-    
-  - type: redis_sync_status
-    display_name: Redis Replication Lag
-    # Comparison of timestamped payload between master and slave.
-
-  - type: redis_memory
-    display_name: Redis Memory Usage
-    # Compares current memory usage vs maxmemory limit.
-
-  - type: redis_evicted_keys
-    display_name: Evicted Keys Rate
-    # Monitors if Redis is running out of memory and dropping keys.
-
-  - type: redis_clients
-    display_name: Connected Redis Clients
-
-  # =======================================================================
-  # 6. WEBSERVER / PHP (App Nodes)
-  # =======================================================================
-  - type: web_type
-    display_name: Webserver Type Check
-    extra_key: expected
-    extra_val: nginx
-
-  - type: php_fpm_workers
-    display_name: PHP-FPM Worker Saturation
-    # Active workers vs max_children limit.
-
-  - type: php_fpm_queue
-    display_name: PHP-FPM Listen Queue
-    # Monitors rejected connections / queue overflows.
-
-  - type: php_opcache
-    display_name: OPCache Hit Rate & Memory
-
-  - type: web_response_time
-    display_name: Loopback Web Response Time
-    hosts:
-      - display_name: localhost
-        url: http://127.0.0.1/
-    # Synthetic response test via localhost loopback.
-
-  # =======================================================================
-  # 7. NFS
-  # =======================================================================
-  - type: nfs_exports
-    display_name: NFS Exports Availability
-    # Checks if exports are successfully exported from the server.
-
-  - type: nfs_mounts
-    display_name: NFS Client Mounts
-    # Checks if exports are actually mounted on the local node.
-
-  - type: nfs_rw_test
-    display_name: NFS Read/Write Validation
-    extra_key: mountpoint
-    extra_val: /mnt/nfs_share
-
-  - type: nfs_iowait
-    display_name: NFS IO Wait Time
-    # Client node metric to detect hanging NFS operations.
-
-  - type: nfs_inode
-    display_name: NFS Server Inode Usage
-
-  # =======================================================================
-  # 8. NEXTCLOUD APPLICATION
-  # =======================================================================
-  - type: nc_cron
-    display_name: Cron Execution Timestamp
-    # Validates if background jobs are actively running.
-
-  - type: url_reachable
-    display_name: Serverinfo API Health Status
-    hosts:
-      - display_name: nextcloud-api
-        url: https://nextcloud.local/ocs/v2.php/apps/serverinfo/api/1.0/info?format=json
-    # Pulls health status natively (could also be done via OCC).
-
-  - type: nc_users
-    display_name: Active Users / Logged-in Sessions
-
-  - type: nc_log_errors
-    display_name: Nextcloud Log Error Rate
-    extra_key: logfile
-    extra_val: /var/www/nextcloud/data/nextcloud.log
-    # Counts new "Error" or "Fatal" lines in nextcloud.log since last cycle.
-
-  # =======================================================================
-  # 9. SYSTEM
-  # =======================================================================
-  - type: disk_io
-    display_name: Disk I/O Metrics
-
-  - type: disk_usage
-    display_name: Root Partition Usage
-    extra_key: mount
-    extra_val: /
-
+```yaml
   - type: cpu
-    display_name: CPU Usage
-    # Extracted via /proc/stat
+    display_name: "CPU Usage"
 
   - type: ram
-    display_name: RAM Usage
-    # Extracted via /proc/meminfo
+    display_name: "RAM Usage"
 
+  # Emits three separate metrics in the JSON payload for 1m, 5m, and 15m
   - type: load_average
-    display_name: System Load Average (1m, 5m, 15m)
+    display_name: "System Load Averages"
+
+  - type: disk_io
+    display_name: "Disk I/O Metrics"
+
+  # extra_val defines the mount path. Defaults to "/" if omitted.
+  - type: disk_usage
+    display_name: "Root Partition Usage"
+    extra_val: "/"
+```
+
+## 2. OS Services & Load Balancer
+*These tests are implemented and require `extra_val` or `hosts` arrays.*
+
+```yaml
+  # extra_val = systemd service name, typically without ".service"
+  - type: service_status
+    display_name: "MariaDB Service State"
+    extra_val: "mariadb"
+
+  # extra_val = process name as visible in /proc or ps (e.g., redis-server)
+  - type: service_pid
+    display_name: "Redis PID Check"
+    extra_val: "redis-server"
+
+  # extra_val = absolute path to HAProxy runtime/admin socket
+  - type: lb_backend_state
+    display_name: "Nextcloud App Nodes Backend State"
+    extra_val: "/run/haproxy/admin.sock"
+
+  # hosts.host = DNS name of target certificate endpoint
+  # hosts.port is usually 443
+  - type: ssl_cert
+    display_name: "Main Domain SSL Expiry"
+    hosts:
+      - host: "cloud.example.com"
+        port: 443
+```
+
+## 3. Databases (MariaDB/MySQL)
+*All DB tests require authentication. Use `extra_key: auth` and provide `user:password` in `extra_val`.*
+
+```yaml
+  - type: db_latency_write
+    display_name: "Database Write Latency"
+    extra_key: "auth"
+    extra_val: "monitor:secret123"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  - type: db_latency_read
+    display_name: "Database Read Latency"
+    extra_key: "auth"
+    extra_val: "monitor:secret123"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  - type: db_master_slave
+    display_name: "Replication Role Check"
+    extra_key: "auth"
+    extra_val: "monitor:secret123"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  - type: db_rw_ro
+    display_name: "Read-Write / Read-Only State"
+    extra_key: "auth"
+    extra_val: "monitor:secret123"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  - type: db_gtid
+    display_name: "Current GTID Position"
+    extra_key: "auth"
+    extra_val: "monitor:secret123"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  - type: db_connections
+    display_name: "Available DB Connections"
+    extra_key: "auth"
+    extra_val: "monitor:secret123"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+
+  - type: db_innodb_buffer
+    display_name: "InnoDB Buffer Pool Hit Rate"
+    extra_key: "auth"
+    extra_val: "monitor:secret123"
+    hosts:
+      - host: "127.0.0.1"
+        port: 3306
+```
+
+## 4. In-Memory Stores (Redis)
+*Requires `extra_key: auth` and the raw Redis password in `extra_val`.*
+
+```yaml
+  - type: redis_sync_channel
+    display_name: "Redis Sync Channel Status"
+    extra_key: "auth"
+    extra_val: "redis_password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 6379
+
+  - type: redis_sync_status
+    display_name: "Redis Replication Lag"
+    extra_key: "auth"
+    extra_val: "redis_password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 6379
+
+  - type: redis_memory
+    display_name: "Redis Memory Usage"
+    extra_key: "auth"
+    extra_val: "redis_password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 6379
+
+  - type: redis_evicted_keys
+    display_name: "Evicted Keys Rate"
+    extra_key: "auth"
+    extra_val: "redis_password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 6379
+
+  - type: redis_clients
+    display_name: "Connected Redis Clients"
+    extra_key: "auth"
+    extra_val: "redis_password"
+    hosts:
+      - host: "127.0.0.1"
+        port: 6379
+```
+
+## 5. Web & PHP-FPM
+
+```yaml
+  - type: web_type
+    display_name: "Webserver Type Check"
+    hosts:
+      - url: "http://127.0.0.1/server-status"
+
+  - type: php_fpm_workers
+    display_name: "PHP-FPM Worker Saturation"
+    hosts:
+      - url: "http://127.0.0.1/fpm-status?json"
+
+  - type: php_fpm_queue
+    display_name: "PHP-FPM Listen Queue"
+    hosts:
+      - url: "http://127.0.0.1/fpm-status?json"
+
+  - type: php_opcache
+    display_name: "OPCache Hit Rate & Memory"
+    hosts:
+      - url: "http://127.0.0.1/opcache-status.php"
+
+  - type: web_response_time
+    display_name: "Loopback Web Response Time"
+    hosts:
+      - url: "http://127.0.0.1/status.php"
+```
+
+## 6. Storage (NFS)
+
+```yaml
+  # extra_val = exported path on the NFS server
+  - type: nfs_exports
+    display_name: "NFS Exports Availability"
+    extra_val: "/srv/nfs/nextcloud"
+
+  # extra_val = local mount point on the NFS client
+  - type: nfs_mounts
+    display_name: "NFS Client Mounts"
+    extra_val: "/mnt/nfs_share"
+
+  # extra_val = writable mounted directory used for temp read/write test
+  - type: nfs_rw_test
+    display_name: "NFS Read/Write Validation"
+    extra_val: "/mnt/nfs_share"
+
+  - type: nfs_iowait
+    display_name: "NFS IO Wait Time"
+
+  # extra_val = directory path whose inode usage should be measured
+  - type: nfs_inode
+    display_name: "NFS Server Inode Usage"
+    extra_val: "/mnt/nfs_share"
+```
+
+## 7. Nextcloud Application
+
+```yaml
+  # extra_val = path to cron marker or lock file used by your implementation
+  - type: nc_cron
+    display_name: "Cron Execution Timestamp"
+    extra_val: "/var/www/nextcloud/data/cron.lock"
+
+  # extra_val = absolute path to occ binary or wrapper command
+  - type: nc_users
+    display_name: "Active Users / Logged-in Sessions"
+    extra_val: "/var/www/nextcloud/occ"
+
+  # extra_val = absolute path to nextcloud.log
+  - type: nc_log_errors
+    display_name: "Nextcloud Log Error Rate"
+    extra_val: "/var/www/nextcloud/data/nextcloud.log"
+```
+
+***
+
+## 8. Planned Modules (Currently Unregistered)
+*The following module types are planned but currently return `"Test execution failed or module type unregistered"` in this daemon build.*
+
+```yaml
+  # Network & DNS
+  - type: hostname
+  - type: ip-address
+  - type: net_load
+  - type: dns_resolve
+  - type: ping
+  - type: conntrack
+  - type: service_port
+  - type: service_connections
+
+  # Advanced Load Balancer
+  - type: lb_sticky_session
+  - type: lb_connections
+  - type: lb_cache
+
+  # Advanced Database
+  - type: db_sync_status
+  - type: db_slow_queries
+
+  # Advanced Nextcloud API
+  - type: url_reachable
+```
