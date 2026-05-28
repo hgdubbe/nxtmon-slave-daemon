@@ -1,0 +1,105 @@
+--- network ---
+
+hostname
+
+ip-address
+
+avg network load
+
+name resolution possible
+
+ping (reachable + latency)
+
+dropped packets / connection tracking table full (conntrack)
+--- local services ---
+
+service status
+
+service port
+
+service pid
+
+active connections per service port
+--- load balancer (Nginx/HAProxy) ---
+
+backend node state (UP/DOWN transitions per Nextcloud app node)
+
+sticky-session / proxy header propagation check
+
+active client connections vs backend connections
+
+SSL certificate validity (expiration date)
+
+cache hit/miss ratio (if proxy_cache is used)
+--- database (MariaDB) ---
+
+from schema:
+write latency
+read latency
+master/slave
+rw/ro
+
+GTID
+
+sync-status (timestamped comparison of Master/Slave GTID)
+
+slow query rate
+
+available connections (Threads_connected vs max_connections)
+
+InnoDB buffer pool usage / hit rate
+--- Redis ---
+
+sync channel
+
+sync status (comparison of timestamped payload between master and slave)
+
+memory usage vs maxmemory limit
+
+evicted keys rate
+
+connected clients count
+--- webserver / PHP (Nginx & PHP-FPM on App Nodes) ---
+
+type (nginx, apache)
+
+port
+
+PHP-FPM active workers vs max_children
+
+PHP-FPM listen queue / rejected connections
+
+OPCache hit rate and memory availability
+
+web response time (synthetic test via localhost loopback)
+--- NFS ---
+
+exports exported?
+
+exports mounted?
+
+read/write-test on exports
+
+NFS wait time / iowait metric on client nodes
+
+inode usage on NFS server
+--- Nextcloud Application (App Nodes via CLI/API) ---
+
+cron execution timestamp (background jobs running?)
+
+serverinfo API health status (via occ or loopback HTTP)
+
+active users / logged-in sessions
+
+Nextcloud log error rate (counting new "Error" or "Fatal" lines in nextcloud.log)
+--- System ---
+
+disk I/O
+
+disk usage
+
+cpu usage
+
+ram usage
+
+system load average (1m, 5m, 15m)
