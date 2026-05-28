@@ -62,6 +62,7 @@ sudo systemctl status nxtmon-slave
 *(Note: Seeing `inactive (dead)` with `code=exited, status=0/SUCCESS` momentarily is normal. The binary runs instantly and exits, waiting for the systemd timer to restart it).*
 
 **View live telemetry logs:**
+recommended to use | jq . for clarity
 ```bash
 sudo journalctl -u nxtmon-slave -f
 ```
