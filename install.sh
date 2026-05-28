@@ -152,15 +152,15 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     sudo chmod +x /usr/local/bin/nxtmon-slave
     
     sudo mkdir -p /etc/nxtmon
-    if [ -f "docs/reference_config.yaml" ]; then
+    if [ -f "doc/reference_config.yaml" ]; then
         if [ ! -f "/etc/nxtmon/config.yaml" ]; then
-            sudo cp docs/reference_config.yaml /etc/nxtmon/config.yaml
-            echo -e "Copied docs/reference_config.yaml to /etc/nxtmon/config.yaml"
+            sudo cp doc/reference_config.yaml /etc/nxtmon/config.yaml
+            echo -e "Copied doc/reference_config.yaml to /etc/nxtmon/config.yaml"
         else
             echo -e "Configuration /etc/nxtmon/config.yaml already exists. Skipping overwrite."
         fi
     else
-        echo -e "${YELLOW}Warning: docs/reference_config.yaml not found. You will need to manually create /etc/nxtmon/config.yaml${NC}"
+        echo -e "${YELLOW}Warning: doc/reference_config.yaml not found. You will need to manually create /etc/nxtmon/config.yaml${NC}"
     fi
     echo -e "${GREEN}Installation complete!${NC}\n"
 else
@@ -172,30 +172,20 @@ echo -e "${YELLOW}[4/5] Setting up systemd Service...${NC}"
 read -p "Do you want to install and enable the systemd daemon? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    SERVICE_FILE="/etc/systemd/system/nxtmon-slave.service"
-    
-    sudo bash -c "cat > $SERVICE_FILE" << 'EOF'
-[Unit]
-Description=nxtmon-slave Telemetry Daemon
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/nxtmon-slave /etc/nxtmon/config.yaml
-Restart=always
-RestartSec=10
-User=root
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    sudo systemctl daemon-reload
-    sudo systemctl enable nxtmon-slave.service >/dev/null 2>&1
-    sudo systemctl restart nxtmon-slave.service
-    
-    echo -e "${GREEN}systemd service installed and started!${NC}"
-    echo -e "Check status with: ${BLUE}sudo systemctl status nxtmon-slave${NC}\n"
+    if [ -f "nxtmon-slave.service" ]; then
+        SERVICE_FILE="/etc/systemd/system/nxtmon-slave.service"
+        sudo cp nxtmon-slave.service "$SERVICE_FILE"
+        sudo chmod 644 "$SERVICE_FILE"
+        
+        sudo systemctl daemon-reload
+        sudo systemctl enable nxtmon-slave.service >/dev/null 2>&1
+        sudo systemctl restart nxtmon-slave.service
+        
+        echo -e "${GREEN}systemd service installed and started!${NC}"
+        echo -e "Check status with: ${BLUE}sudo systemctl status nxtmon-slave${NC}\n"
+    else
+        echo -e "${RED}Error: nxtmon-slave.service file not found in the repository. Skipping systemd setup.${NC}\n"
+    fi
 else
     echo -e "Skipping systemd setup.\n"
 fi
