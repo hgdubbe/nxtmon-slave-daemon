@@ -4,7 +4,7 @@ nxtmon Slave Daemon - AI Implementation Specification
 Role: The slave daemon (nxtmond --role slave) is a modular, lightweight data-collection agent running on monitored Linux hosts. It executes a dynamically configured list of generic tests, formats the results into a standardized JSON payload, and pushes them to a central master daemon via TCP.
 
 install with:
-curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/main/install.sh | sudo bash
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/main/install.sh)"
 
 Architecture Paradigm: The slave has no concept of "Host Roles" (e.g., it does not know what a "loadbalancer" is). It only knows how to execute atomic "Tests" (e.g., cpu, url_reachable, tcp_connect) defined in a YAML configuration file.
 --test / --dry-run: load config, run all tests once, print JSON to stdout.
