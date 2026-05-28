@@ -1,0 +1,13 @@
+[Unit]
+Description=nxtmon-slave Telemetry Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nxtmon-slave /etc/nxtmon/config.yaml
+Restart=always
+RestartSec=10
+User=root
+
+[Install]
+WantedBy=multi-user.target
