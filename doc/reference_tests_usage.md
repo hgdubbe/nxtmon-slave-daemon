@@ -2,6 +2,13 @@
 
 This document outlines every telemetry module available in `nxtmon-slave-daemon`, how to configure it in `/etc/nxtmon/config.yaml`, and the expected JSON data it yields.
 
+## Understanding `extra_key` and `extra_val`
+Because the daemon is written in strict C, the configuration struct (`test_entry_t`) needs a flexible way to accept arbitrary parameters that don't fit into standard network fields like `host` or `port`. 
+* **`extra_val`**: A generic string field used to pass the primary argument to a module. Depending on the test, this could be a file path, a systemd service name, a Unix socket, or a password.
+* **`extra_key`**: Acts as an identifier to tell the C module how to parse `extra_val`. For example, setting `extra_key: auth` explicitly tells the database or API module that `extra_val` contains authentication credentials.
+
+---
+
 ## 1. System & Hardware (`tests_sys.c`)
 Requires no special configuration parameters.
 
@@ -30,6 +37,7 @@ Requires no special configuration parameters.
   display_name: Root Partition Usage
 
 # Disk usage: Checking a specific secondary mount point
+# extra_val defines the absolute path to the mount directory
 - type: disk_usage
   display_name: Database Storage Usage
   extra_val: "/mnt/db_data"
@@ -76,11 +84,13 @@ Requires no special configuration parameters.
       port: 22
 
 # Check if a systemd service is active
+# extra_val defines the exact name of the systemd unit (without .service)
 - type: service_status
   display_name: HAProxy Service State
   extra_val: haproxy
 
 # Extract the PID of a running process
+# extra_val defines the exact process name as it appears in /proc/PID/comm
 - type: service_pid
   display_name: Redis PID Check
   extra_val: redis-server
@@ -104,6 +114,8 @@ Requires `hosts[0].host`, `hosts[0].port`. Authentication is passed as `user:pas
 ### Usage Examples
 ```yaml
 # Common block for a local database
+# extra_key flags the parameter as authentication
+# extra_val contains the literal "username:password" string
 - type: db_latency_read
   display_name: Local DB Read Latency
   extra_key: auth
@@ -152,7 +164,9 @@ Requires `hosts[0].host`, `hosts[0].port`. Authentication is passed as password 
     - host: 127.0.0.1
       port: 6379
 
-# Remote Redis with a password (passed via extra_val)
+# Remote Redis with a password
+# extra_key flags the parameter as authentication
+# extra_val contains the literal Redis AUTH password
 - type: redis_sync_status
   display_name: Redis Sentinel Replication Lag
   extra_key: auth
@@ -202,16 +216,20 @@ Requires `hosts[0].host`, `hosts[0].port`. Authentication is passed as password 
 ### Usage Examples
 ```yaml
 # Check if Nextcloud's cron.php executed recently (local file stat)
+# extra_val points to the marker file modified by cron
 - type: nc_cron
   display_name: Nextcloud Cron Execution
   extra_val: "/var/www/nextcloud/data/cron.lock"
 
 # Parse recent error rates directly from the Nextcloud log
+# extra_val points to the absolute path of nextcloud.log
 - type: nc_log_errors
   display_name: Nextcloud Log Health
   extra_val: "/var/www/nextcloud/data/nextcloud.log"
 
 # Hit the Nextcloud App API (Requires app password)
+# extra_key flags the parameter as authentication
+# extra_val contains the literal "admin_user:app_password" string for HTTP Basic Auth
 - type: nc_serverinfo_api
   display_name: Nextcloud Serverinfo API
   extra_key: auth
@@ -235,16 +253,19 @@ Requires `hosts[0].host`, `hosts[0].port`. Authentication is passed as password 
 ### Usage Examples
 ```yaml
 # ON THE NFS SERVER: Check if the directory is actually exported
+# extra_val is the local absolute path that should be network-exported
 - type: nfs_exports
   display_name: NFS Exports Check
   extra_val: "/mnt/nfs_share"
 
 # ON THE NFS CLIENT: Check if it is successfully mounted
+# extra_val is the absolute path where the client mounts the share
 - type: nfs_mounts
   display_name: NFS Client Mount State
   extra_val: "/var/www/nextcloud/data"
 
 # ON THE NFS CLIENT: Perform an actual Read/Write/Delete cycle over the network
+# extra_val is the mount point where the test file will be temporarily written
 - type: nfs_rw_test
   display_name: NFS Network R/W Latency
   extra_val: "/var/www/nextcloud/data"
@@ -269,6 +290,7 @@ Requires `hosts[0].host`, `hosts[0].port`. Authentication is passed as password 
       port: 443
 
 # Query HAProxy's admin socket to verify backend servers are UP
+# extra_val is the absolute path to the HAProxy runtime AF_UNIX socket
 - type: lb_backend_state
   display_name: HAProxy Backend Node Health
   extra_val: "/run/haproxy/admin.sock"
