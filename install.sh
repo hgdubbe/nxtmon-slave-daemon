@@ -1,224 +1,93 @@
 #!/bin/bash
-# ==============================================================================
-# nxtmon-slave-daemon Installer Script
-# ==============================================================================
+# nxtmon-slave-daemon install script
 
-set -e
-
-# Styling
-GREEN='\033[1;32m'
-BLUE='\033[1;34m'
-YELLOW='\033[1;33m'
-RED='\033[1;31m'
-NC='\033[0m'
-
-# Check if user wants to uninstall
-if [ "$1" == "--uninstall" ]; then
-    echo -e "${RED}Uninstalling nxtmon-slave-daemon...${NC}"
-    sudo systemctl stop nxtmon-slave.service >/dev/null 2>&1 || true
-    sudo systemctl disable nxtmon-slave.service >/dev/null 2>&1 || true
-    sudo rm -f /etc/systemd/system/nxtmon-slave.service
-    sudo systemctl daemon-reload
-    sudo rm -f /usr/local/bin/nxtmon-slave
-    echo -e "${YELLOW}Binaries and services removed.${NC}"
-    read -p "Do you want to delete the configuration files in /etc/nxtmon? (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        sudo rm -rf /etc/nxtmon
-        echo -e "${GREEN}Configuration deleted. Uninstallation complete.${NC}"
-    else
-        echo -e "${GREEN}Configuration kept. Uninstallation complete.${NC}"
-    fi
-    exit 0
+if [ "$EUID" -ne 0 ]; then
+  echo "Please run as root"
+  exit
 fi
 
-echo -e "${BLUE}======================================================${NC}"
-echo -e "${GREEN}      nxtmon-slave-daemon Auto-Installer${NC}"
-echo -e "${BLUE}======================================================${NC}\n"
+echo "======================================"
+echo "Installing nxtmon-slave-daemon"
+echo "======================================"
 
-# 0. Environment Setup
-# If not run inside the repo, clone it into a temp dir so bash -c "$(curl...)" works anywhere
-if [ ! -d "src" ] || [ ! -f "src/main.c" ]; then
-    echo -e "${YELLOW}Not inside repository. Cloning from GitHub...${NC}"
-    TEMP_DIR=$(mktemp -d)
-    git clone -q https://github.com/hgdubbe/nxtmon-slave-daemon.git "$TEMP_DIR"
-    cd "$TEMP_DIR"
+# Determine the directory where the install script is located
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+
+# Create directories
+echo "[1/5] Creating directories..."
+mkdir -p /etc/nxtmon
+mkdir -p /var/log/nxtmon
+mkdir -p /usr/local/bin
+
+# Handle Configuration File
+echo "[2/5] Setting up configuration..."
+DEFAULT_CONFIG="$REPO_DIR/default.yaml"
+
+if [ ! -f "$DEFAULT_CONFIG" ]; then
+    echo "ERROR: default.yaml not found in $REPO_DIR!"
+    echo "Please ensure you run this script from the repository root."
+    exit 1
 fi
 
-# 1. Dependency Check & Installation
-echo -e "${YELLOW}[1/5] Checking System Dependencies...${NC}"
-
-DEPS=("build-essential" "libyaml-dev" "libcurl4-openssl-dev" "libmariadb-dev" "libmariadb-dev-compat" "libhiredis-dev" "libcjson-dev" "libssl-dev")
-MISSING_DEPS=()
-
-for pkg in "${DEPS[@]}"; do
-    if ! dpkg -s "$pkg" >/dev/null 2>&1; then
-        MISSING_DEPS+=("$pkg")
-    fi
-done
-
-if [ ${#MISSING_DEPS[@]} -eq 0 ]; then
-    echo -e "${GREEN}All required dependencies are already installed!${NC}\n"
-else
-    echo -e "The following dependencies are missing:"
-    for pkg in "${MISSING_DEPS[@]}"; do
-        echo -e "  - $pkg"
-    done
-    echo ""
-    read -p "Do you want to install these missing dependencies? (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "Updating apt cache silently..."
-        sudo apt-get update -qq >/dev/null 2>&1
-
-        echo -e "Installing dependencies:"
-        HAS_ERROR=0
-        for pkg in "${MISSING_DEPS[@]}"; do
-            echo -ne "  [ ] $pkg \r"
-            if sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq "$pkg" >apt_error.log 2>&1; then
-                echo -e "  [${GREEN}✓${NC}] $pkg"
-            else
-                echo -e "  [${RED}X${NC}] $pkg"
-                echo -e "\n${RED}Failed to install $pkg. Error details:${NC}"
-                cat apt_error.log
-                HAS_ERROR=1
-            fi
-        done
-        rm -f apt_error.log
-
-        if [ $HAS_ERROR -eq 0 ]; then
-            echo -e "${GREEN}\nAll missing dependencies installed successfully!${NC}\n"
-        else
-            echo -e "${RED}\nSome dependencies failed to install. Please resolve the errors above.${NC}"
-            exit 1
-        fi
-    else
-        echo -e "Skipping dependency installation. (Compilation might fail)\n"
-    fi
+if [ -f "/etc/nxtmon/config.yaml" ]; then
+    echo "Existing configuration found. Creating backup at /etc/nxtmon/config.yaml.bak"
+    cp "/etc/nxtmon/config.yaml" "/etc/nxtmon/config.yaml.bak"
 fi
 
-# 2. Compilation
-echo -e "${YELLOW}[2/5] Compiling nxtmon-slave...${NC}"
-read -p "Do you want to compile the daemon now? (y/n): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    if [ ! -f "Makefile" ]; then
-        echo -e "Makefile missing. Generating it on the fly..."
-        cat > Makefile << 'EOF'
-CC = gcc
-CFLAGS = -Wall -O2 -Wno-stringop-truncation -Wno-misleading-indentation -Wno-discarded-qualifiers
-LDFLAGS = -lyaml -lcurl -lmariadb -lhiredis -lcjson -lssl -lcrypto
-SRC_DIR = src
-OBJ_DIR = obj
-SRCS = $(wildcard $(SRC_DIR)/*.c)
-OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
-TARGET = nxtmon-slave
-all: $(TARGET)
-$(TARGET): $(OBJS)
-	$(CC) $(OBJS) -o $(TARGET) $(LDFLAGS)
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-$(OBJ_DIR):
-	mkdir -p $(OBJ_DIR)
-clean:
-	rm -rf $(OBJ_DIR) $(TARGET)
-.PHONY: all clean
+echo "Copying default.yaml to /etc/nxtmon/config.yaml..."
+cp "$DEFAULT_CONFIG" "/etc/nxtmon/config.yaml"
+
+# Compile and install binary
+echo "[3/5] Compiling daemon..."
+if ! command -v cmake &> /dev/null; then
+    echo "Installing build dependencies (cmake, gcc, libyaml-dev)..."
+    apt-get update && apt-get install -y cmake gcc build-essential libyaml-dev
+fi
+
+# We build from the repo dir
+cd "$REPO_DIR" || exit 1
+cmake -B build
+cmake --build build --parallel
+
+echo "Installing binary to /usr/local/bin/nxtmond-slave..."
+cp build/nxtmond-slave /usr/local/bin/nxtmond-slave
+chmod +x /usr/local/bin/nxtmond-slave
+
+# Systemd Service
+echo "[4/5] Installing systemd service..."
+cat << 'EOF' > /etc/systemd/system/nxtmond-slave.service
+[Unit]
+Description=nxtmon Slave Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nxtmond-slave -c /etc/nxtmon/config.yaml
+Restart=on-failure
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
 EOF
-    fi
 
-    make clean >/dev/null 2>&1 || true
-    if make >build.log 2>&1; then
-        echo -e "${GREEN}Compilation successful!${NC}\n"
-    else
-        echo -e "${RED}Compilation failed. Build log:${NC}"
-        cat build.log
-        exit 1
-    fi
-else
-    if [ ! -f "nxtmon-slave" ]; then
-        echo -e "${RED}Binary 'nxtmon-slave' not found. You must compile it first.${NC}"
-        exit 1
-    fi
-    echo -e "Skipping compilation.\n"
-fi
+systemctl daemon-reload
 
-# 3. System Installation
-echo -e "${YELLOW}[3/5] Installing binary and configuration...${NC}"
-read -p "Do you want to install nxtmon-slave to /usr/local/bin and create /etc/nxtmon? (y/n): " -n 1 -r
+echo "[5/5] Service Setup"
+read -p "Do you want to enable and start the service now? (y/n) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    sudo mv nxtmon-slave /usr/local/bin/
-    sudo chmod +x /usr/local/bin/nxtmon-slave
-    
-    sudo mkdir -p /etc/nxtmon
-    if [ -f "doc/reference_config.yaml" ]; then
-        if [ ! -f "/etc/nxtmon/config.yaml" ]; then
-            sudo cp doc/reference_config.yaml /etc/nxtmon/config.yaml
-            echo -e "Copied doc/reference_config.yaml to /etc/nxtmon/config.yaml"
-        else
-            echo -e "Configuration /etc/nxtmon/config.yaml already exists. Skipping overwrite."
-        fi
-    else
-        echo -e "${YELLOW}Warning: doc/reference_config.yaml not found. You will need to manually create /etc/nxtmon/config.yaml${NC}"
-    fi
-    echo -e "${GREEN}Installation complete!${NC}\n"
+    systemctl enable nxtmond-slave.service
+    systemctl start nxtmond-slave.service
+    echo "Service started."
+    systemctl status nxtmond-slave.service --no-pager | head -n 5
 else
-    echo -e "Skipping system installation. You can run it locally.\n"
+    echo "Service installed but not started."
+    echo "You can start it later with: systemctl start nxtmond-slave.service"
 fi
 
-# 4. Systemd Service Setup
-echo -e "${YELLOW}[4/5] Setting up systemd Service...${NC}"
-read -p "Do you want to install and enable the systemd daemon? (y/n): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-
-    # Ask for Polling Interval
-    read -p "Enter polling interval in seconds [10]: " INPUT_INTERVAL
-    POLL_INTERVAL=${INPUT_INTERVAL:-10}
-    if ! [[ "$POLL_INTERVAL" =~ ^[0-9]+$ ]]; then
-        echo -e "${YELLOW}Invalid input. Defaulting to 10 seconds.${NC}"
-        POLL_INTERVAL=10
-    fi
-
-    # Ask for Verbosity
-    read -p "Enable verbose logging (prints full payload to systemd logs)? (y/N): " -n 1 -r
-    USER_VERBOSE=$REPLY
-    echo
-
-    if [ -f "nxtmon-slave.service" ]; then
-        SERVICE_FILE="/etc/systemd/system/nxtmon-slave.service"
-        sudo cp nxtmon-slave.service "$SERVICE_FILE"
-        sudo chmod 644 "$SERVICE_FILE"
-        
-        # Inject the chosen RestartSec interval
-        if grep -q "^RestartSec=" "$SERVICE_FILE"; then
-            sudo sed -i "s/^RestartSec=.*/RestartSec=$POLL_INTERVAL/" "$SERVICE_FILE"
-        else
-            sudo sed -i "/^\[Service\]/a RestartSec=$POLL_INTERVAL" "$SERVICE_FILE"
-        fi
-        
-        # Suppress stdout spam if verbose is NOT selected
-        if [[ ! $USER_VERBOSE =~ ^[Yy]$ ]]; then
-            sudo sed -i "s|^ExecStart=.*|ExecStart=/bin/bash -c '/usr/local/bin/nxtmon-slave /etc/nxtmon/config.yaml >/dev/null \&\& echo \"Telemetry sweep executed.\"'|" "$SERVICE_FILE"
-        fi
-        
-        sudo systemctl daemon-reload
-        sudo systemctl enable nxtmon-slave.service >/dev/null 2>&1
-        sudo systemctl restart nxtmon-slave.service
-        
-        echo -e "${GREEN}systemd service installed and started!${NC}"
-        echo -e "Check status with: ${BLUE}sudo systemctl status nxtmon-slave${NC}\n"
-    else
-        echo -e "${RED}Error: nxtmon-slave.service file not found in the repository. Skipping systemd setup.${NC}\n"
-    fi
-else
-    echo -e "Skipping systemd setup.\n"
-fi
-
-# 5. Finish
-echo -e "${YELLOW}[5/5] All Done!${NC}"
-echo -e "The daemon will poll and push telemetry every 10 seconds (or your chosen interval)."
-echo -e "Make sure to edit ${BLUE}/etc/nxtmon/config.yaml${NC} with your master node details."
-echo -e "To uninstall in the future, run:"
-echo -e "${BLUE}sudo bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/main/install.sh)\" -- --uninstall${NC}"
-echo -e "======================================================\n"
+echo "======================================"
+echo "Installation complete!"
+echo "Config file: /etc/nxtmon/config.yaml"
+echo "Log directory: /var/log/nxtmon/"
+echo "======================================"
