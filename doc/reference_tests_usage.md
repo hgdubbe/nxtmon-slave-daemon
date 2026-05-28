@@ -13,6 +13,31 @@ Requires no special configuration parameters.
 | `disk_usage` | `extra_val`: mount path (default: `/`) | `0.0` - `1.0` | `fraction` | `true` if path exists | "Disk: 45.1 GB used / 100.0 GB total (/)" |
 | `disk_io` | None | Total IO/sec | `iops` | `true` if read succeeds | "Global Disk I/O: 145 IOPS" |
 
+### Usage Examples
+```yaml
+# Basic system checks (no extra parameters needed)
+- type: cpu
+  display_name: System CPU Usage
+
+- type: ram
+  display_name: System RAM Usage
+
+- type: load_average
+  display_name: System Load Averages
+
+# Disk usage: Checking the default root partition
+- type: disk_usage
+  display_name: Root Partition Usage
+
+# Disk usage: Checking a specific secondary mount point
+- type: disk_usage
+  display_name: Database Storage Usage
+  extra_val: "/mnt/db_data"
+
+- type: disk_io
+  display_name: Global Disk IOPS
+```
+
 ---
 
 ## 2. Network & OS (`tests_net.c`, `tests_services.c`)
@@ -23,6 +48,43 @@ Requires no special configuration parameters.
 | `tcp_connect` | `hosts[0].host`, `hosts[0].port` | Latency (ms) | `ms` | `true` if port open, `false` if timeout | "Connected in 1.45 ms" |
 | `service_status` | `extra_val`: Service name (e.g. `nginx`) | `1.0` / `0.0` | `boolean` | `true` if active/running | "Unit nginx.service is active" |
 | `service_pid` | `extra_val`: Process name | `PID` integer | `pid` | `true` if PID > 0 | "Process redis-server running with PID 948" |
+
+### Usage Examples
+```yaml
+# Check local hostname resolution
+- type: hostname
+  display_name: Local Hostname Check
+
+# TCP Connect: Single host target
+- type: tcp_connect
+  display_name: Ping Core Router
+  hosts:
+    - host: 192.168.1.1
+      port: 80
+
+# TCP Connect: Multi-host targeting (Requires separate test blocks)
+- type: tcp_connect
+  display_name: Check App Node 1 SSH
+  hosts:
+    - host: 10.0.0.11
+      port: 22
+
+- type: tcp_connect
+  display_name: Check App Node 2 SSH
+  hosts:
+    - host: 10.0.0.12
+      port: 22
+
+# Check if a systemd service is active
+- type: service_status
+  display_name: HAProxy Service State
+  extra_val: haproxy
+
+# Extract the PID of a running process
+- type: service_pid
+  display_name: Redis PID Check
+  extra_val: redis-server
+```
 
 ---
 
@@ -39,6 +101,36 @@ Requires `hosts[0].host`, `hosts[0].port`. Authentication is passed as `user:pas
 | `db_innodb_buffer`| DB Auth | `0.0` - `1.0` | `fraction` | `true` | "InnoDB Buffer Hit Rate: 99.8%" |
 | `db_connections` | DB Auth | Count | `count` | `true` | "Connections: 45 / 500 max" |
 
+### Usage Examples
+```yaml
+# Common block for a local database
+- type: db_latency_read
+  display_name: Local DB Read Latency
+  extra_key: auth
+  extra_val: "monitor_user:securepassword123"
+  hosts:
+    - host: 127.0.0.1
+      port: 3306
+
+# Checking replication role on a remote cluster node
+- type: db_master_slave
+  display_name: Remote Node Replication Role
+  extra_key: auth
+  extra_val: "monitor_user:securepassword123"
+  hosts:
+    - host: 10.0.0.50
+      port: 3306
+
+# Checking if the database is locked to Read-Only mode
+- type: db_rw_ro
+  display_name: Database Read-Only State
+  extra_key: auth
+  extra_val: "monitor_user:securepassword123"
+  hosts:
+    - host: 127.0.0.1
+      port: 3306
+```
+
 ---
 
 ## 4. In-Memory: Redis (`tests_redis.c`)
@@ -51,6 +143,25 @@ Requires `hosts[0].host`, `hosts[0].port`. Authentication is passed as password 
 | `redis_evicted_keys`| Redis Auth | Eviction Count | `count` | `true` if 0, `false` if >0 | "Evicted keys: 0" |
 | `redis_clients` | Redis Auth | Count | `count` | `true` | "Connected clients: 12" |
 
+### Usage Examples
+```yaml
+# Local Redis without a password
+- type: redis_memory
+  display_name: Redis Memory Saturation
+  hosts:
+    - host: 127.0.0.1
+      port: 6379
+
+# Remote Redis with a password (passed via extra_val)
+- type: redis_sync_status
+  display_name: Redis Sentinel Replication Lag
+  extra_key: auth
+  extra_val: "my_redis_password"
+  hosts:
+    - host: 10.0.0.60
+      port: 6379
+```
+
 ---
 
 ## 5. Web & PHP-FPM (`tests_web.c`)
@@ -62,6 +173,21 @@ Requires `hosts[0].host`, `hosts[0].port`. Authentication is passed as password 
 | `php_fpm_queue` | `hosts[0].url` | Count | `count` | `true` if queue == 0 | "FPM Listen Queue: 0" |
 | `php_opcache` | `hosts[0].url` (Custom PHP script) | `0.0` - `1.0` | `fraction` | `true` | "OPCache Memory Hit: 98.4%" |
 
+### Usage Examples
+```yaml
+# Standard HTTP response time check
+- type: web_response_time
+  display_name: Public Site Responsiveness
+  hosts:
+    - url: "https://mycloud.domain.com"
+
+# PHP-FPM status page check (Assuming you exposed /status locally)
+- type: php_fpm_workers
+  display_name: PHP-FPM Worker Pool
+  hosts:
+    - url: "http://127.0.0.1/status?json"
+```
+
 ---
 
 ## 6. Application: Nextcloud (`tests_nextcloud.c`, `tests_nextcloud_api.c`)
@@ -72,6 +198,27 @@ Requires `hosts[0].host`, `hosts[0].port`. Authentication is passed as password 
 | `nc_log_errors` | `extra_val`: path to nextcloud.log | Error Count | `count` | `true` | "Found 0 errors in last 50 log lines" |
 | `nc_serverinfo_api`| `hosts[0].url`, `extra_val`: `user:pass`| HTTP Status Code | `status` | `true` if 100/200 | "Serverinfo API reports OK" |
 | `nc_users` | `extra_val`: path to `occ` | Count | `count` | `true` | "Active users: 4" (via API bonus block) |
+
+### Usage Examples
+```yaml
+# Check if Nextcloud's cron.php executed recently (local file stat)
+- type: nc_cron
+  display_name: Nextcloud Cron Execution
+  extra_val: "/var/www/nextcloud/data/cron.lock"
+
+# Parse recent error rates directly from the Nextcloud log
+- type: nc_log_errors
+  display_name: Nextcloud Log Health
+  extra_val: "/var/www/nextcloud/data/nextcloud.log"
+
+# Hit the Nextcloud App API (Requires app password)
+- type: nc_serverinfo_api
+  display_name: Nextcloud Serverinfo API
+  extra_key: auth
+  extra_val: "admin:app_password_here"
+  hosts:
+    - url: "https://cloud.domain.com/ocs/v2.php/apps/serverinfo/api/1.0/info?format=json"
+```
 
 ---
 
@@ -85,6 +232,24 @@ Requires `hosts[0].host`, `hosts[0].port`. Authentication is passed as password 
 | `nfs_iowait` | None | `0.0` - `1.0` | `fraction` | `true` | "IO Wait is 0.5%" |
 | `nfs_inode` | `extra_val`: Mount path | `0.0` - `1.0` | `fraction` | `true` | "Inode usage: 45%" |
 
+### Usage Examples
+```yaml
+# ON THE NFS SERVER: Check if the directory is actually exported
+- type: nfs_exports
+  display_name: NFS Exports Check
+  extra_val: "/mnt/nfs_share"
+
+# ON THE NFS CLIENT: Check if it is successfully mounted
+- type: nfs_mounts
+  display_name: NFS Client Mount State
+  extra_val: "/var/www/nextcloud/data"
+
+# ON THE NFS CLIENT: Perform an actual Read/Write/Delete cycle over the network
+- type: nfs_rw_test
+  display_name: NFS Network R/W Latency
+  extra_val: "/var/www/nextcloud/data"
+```
+
 ---
 
 ## 8. Load Balancer: HAProxy (`tests_lb.c`)
@@ -93,3 +258,18 @@ Requires `hosts[0].host`, `hosts[0].port`. Authentication is passed as password 
 |---|---|---|---|---|---|
 | `ssl_cert` | `hosts[0].host` (Domain) | Days until expiry | `days` | `true` if > 14 days | "SSL valid for 45 days" |
 | `lb_backend_state` | `extra_val`: Path to AF_UNIX socket | Total UP nodes | `count` | `true` if > 0 | "Backend app_nodes: 3 UP, 0 DOWN" |
+
+### Usage Examples
+```yaml
+# Check the expiration date of your main SSL certificate
+- type: ssl_cert
+  display_name: Domain SSL Expiry
+  hosts:
+    - host: "mycloud.domain.com"
+      port: 443
+
+# Query HAProxy's admin socket to verify backend servers are UP
+- type: lb_backend_state
+  display_name: HAProxy Backend Node Health
+  extra_val: "/run/haproxy/admin.sock"
+```
