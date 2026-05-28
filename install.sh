@@ -12,6 +12,26 @@ YELLOW='\033[1;33m'
 RED='\033[1;31m'
 NC='\033[0m'
 
+# Check if user wants to uninstall
+if [ "$1" == "--uninstall" ]; then
+    echo -e "${RED}Uninstalling nxtmon-slave-daemon...${NC}"
+    sudo systemctl stop nxtmon-slave.service || true
+    sudo systemctl disable nxtmon-slave.service || true
+    sudo rm -f /etc/systemd/system/nxtmon-slave.service
+    sudo systemctl daemon-reload
+    sudo rm -f /usr/local/bin/nxtmon-slave
+    echo -e "${YELLOW}Binaries and services removed.${NC}"
+    read -p "Do you want to delete the configuration files in /etc/nxtmon? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        sudo rm -rf /etc/nxtmon
+        echo -e "${GREEN}Configuration deleted. Uninstallation complete.${NC}"
+    else
+        echo -e "${GREEN}Configuration kept. Uninstallation complete.${NC}"
+    fi
+    exit 0
+fi
+
 echo -e "${BLUE}======================================================${NC}"
 echo -e "${GREEN}      nxtmon-slave-daemon Auto-Installer${NC}"
 echo -e "${BLUE}======================================================${NC}\n"
@@ -91,12 +111,9 @@ After=network.target
 
 [Service]
 Type=simple
-# The script loops internally or via systemd. For a pure oneshot check that we want to run periodically:
-# Since the C app is a single pass, we use a loop in ExecStart or a systemd timer. 
-# Alternatively, restart it every 60s.
 ExecStart=/usr/local/bin/nxtmon-slave /etc/nxtmon/config.yaml
 Restart=always
-RestartSec=60
+RestartSec=10
 User=root
 
 [Install]
@@ -115,6 +132,7 @@ fi
 
 # 5. Finish
 echo -e "${YELLOW}[5/5] All Done!${NC}"
-echo -e "If you installed the service, the daemon is now running and polling every 60 seconds."
-echo -e "Make sure to edit ${BLUE}/etc/nxtmon/config.yaml${NC} with your master node details and actual DB/App parameters."
+echo -e "The daemon will poll and push telemetry every 10 seconds."
+echo -e "Make sure to edit ${BLUE}/etc/nxtmon/config.yaml${NC} with your master node details."
+echo -e "To uninstall in the future, run: ${BLUE}./install.sh --uninstall${NC}"
 echo -e "======================================================\n"
