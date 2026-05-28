@@ -14,7 +14,11 @@ static long long get_timestamp(void) {
 }
 
 static void safe_copy(char *dst, const char *src, size_t max) {
-    snprintf(dst, max, "%s", src);
+    if (max == 0) return;
+    size_t len = strlen(src);
+    if (len >= max) len = max - 1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
 }
 
 /* =========================================================================

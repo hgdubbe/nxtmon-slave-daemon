@@ -11,8 +11,11 @@ static long long get_timestamp(void) {
 }
 
 static void safe_copy(char *dst, const char *src, size_t max) {
-    strncpy(dst, src, max - 1);
-    dst[max - 1] = '\0';
+    if (max == 0) return;
+    size_t len = strlen(src);
+    if (len >= max) len = max - 1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
 }
 
 /* =========================================================================
@@ -29,7 +32,10 @@ static int srv_status_collect(const test_entry_t *cfg, test_result_t *results, s
     safe_copy(r->display_name, cfg->display_name, CONFIG_MAX_STR);
     r->timestamp = get_timestamp();
     
-    if (strcmp(cfg->extra_key, "unit") != 0 || strlen(cfg->extra_val) == 0) {
+    if (strlen(cfg->extra_val) == 0 ||
+        (cfg->extra_key[0] != '\0' &&
+         strcmp(cfg->extra_key, "unit") != 0 &&
+         strcmp(cfg->extra_key, "service") != 0)) {
         r->ok = 0; r->value = 0;
         safe_copy(r->detail, "Missing or invalid 'unit' in extra_key/val", sizeof(r->detail));
         return 0;
@@ -89,7 +95,11 @@ static int srv_pid_collect(const test_entry_t *cfg, test_result_t *results, size
     safe_copy(r->display_name, cfg->display_name, CONFIG_MAX_STR);
     r->timestamp = get_timestamp();
     
-    if (strcmp(cfg->extra_key, "process") != 0 || strlen(cfg->extra_val) == 0) {
+    if (strlen(cfg->extra_val) == 0 ||
+        (cfg->extra_key[0] != '\0' &&
+         strcmp(cfg->extra_key, "process") != 0 &&
+         strcmp(cfg->extra_key, "pid") != 0 &&
+         strcmp(cfg->extra_key, "process_name") != 0)) {
         r->ok = 0; r->value = 0;
         safe_copy(r->detail, "Missing 'process' in extra_key/val", sizeof(r->detail));
         return 0;

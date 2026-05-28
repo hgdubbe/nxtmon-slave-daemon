@@ -8,11 +8,18 @@ The `type` field must be written exactly as shown below for the daemon to recogn
 ```yaml
 schema_version: 2
 
+master:
+  host: "monitor.example.com"
+  port: 443
+  token: "replace-with-bearer-token"
+
 agent:
   display_name: "my-reference-node"
 
 tests:
 ```
+
+Omit `master.host` for local development; the daemon will print JSON to stdout instead of posting it.
 
 ## 1. System & Hardware Metrics
 *All of these tests are fully implemented and require no special parameters.*
@@ -44,17 +51,27 @@ tests:
   # extra_val = systemd service name, typically without ".service"
   - type: service_status
     display_name: "MariaDB Service State"
+    extra_key: "unit"
     extra_val: "mariadb"
 
   # extra_val = process name as visible in /proc or ps (e.g., redis-server)
   - type: service_pid
     display_name: "Redis PID Check"
+    extra_key: "process"
     extra_val: "redis-server"
 
-  # extra_val = absolute path to HAProxy runtime/admin socket
+  # extra_val = absolute path to HAProxy runtime/admin socket.
+  # This aggregates all backend server rows returned by "show stat".
   - type: lb_backend_state
     display_name: "Nextcloud App Nodes Backend State"
+    extra_key: "socket"
     extra_val: "/run/haproxy/admin.sock"
+
+  # To filter one backend pool instead, use extra_key: backend_pool.
+  - type: lb_backend_state
+    display_name: "Nextcloud App Nodes Backend State"
+    extra_key: "backend_pool"
+    extra_val: "nextcloud_cluster"
 
   # hosts.host = DNS name of target certificate endpoint
   # hosts.port is usually 443

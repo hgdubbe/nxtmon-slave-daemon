@@ -17,8 +17,11 @@ static long long get_timestamp(void) {
 }
 
 static void safe_copy(char *dst, const char *src, size_t max) {
-    strncpy(dst, src, max - 1);
-    dst[max - 1] = '\0';
+    if (max == 0) return;
+    size_t len = strlen(src);
+    if (len >= max) len = max - 1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
 }
 
 /* =========================================================================
@@ -135,11 +138,17 @@ static int web_type_collect(const test_entry_t *cfg, test_result_t *results, siz
 
     for (size_t i = 0; i < headers.size; i++) headers.memory[i] = tolower((unsigned char)headers.memory[i]);
     
-    char expected[128];
-    safe_copy(expected, cfg->extra_val, sizeof(expected));
+    char expected[128] = "";
+    if (cfg->extra_key[0] == '\0' || strcmp(cfg->extra_key, "expected") == 0) {
+        safe_copy(expected, cfg->extra_val, sizeof(expected));
+    }
     for (size_t i = 0; i < strlen(expected); i++) expected[i] = tolower((unsigned char)expected[i]);
 
-    if (strstr(headers.memory, expected) != NULL) {
+    if (expected[0] == '\0') {
+        r->ok = 1; r->value = 1.0;
+        safe_copy(r->unit, "boolean", sizeof(r->unit));
+        safe_copy(r->detail, "HTTP endpoint reachable; no expected server header configured", sizeof(r->detail));
+    } else if (strstr(headers.memory, expected) != NULL) {
         r->ok = 1; r->value = 1.0;
         safe_copy(r->unit, "boolean", sizeof(r->unit));
         snprintf(r->detail, sizeof(r->detail), "Webserver matches (%.100s)", expected);
@@ -170,7 +179,8 @@ static int php_fpm_workers_collect(const test_entry_t *cfg, test_result_t *resul
 
     if (fetch_url(url, &body, NULL, NULL, err, sizeof(err)) != 0) {
         r->ok = 0; r->value = 0; safe_copy(r->detail, err, sizeof(r->detail));
-        if (body.memory) free(body.memory); return 0;
+        if (body.memory) free(body.memory);
+        return 0;
     }
 
     int active = 0, total = 0;
@@ -186,7 +196,8 @@ static int php_fpm_workers_collect(const test_entry_t *cfg, test_result_t *resul
         safe_copy(r->detail, "Failed to parse active/total processes", sizeof(r->detail));
     }
 
-    free(body.memory); return 0;
+    free(body.memory);
+    return 0;
 }
 
 /* =========================================================================
@@ -206,7 +217,8 @@ static int php_fpm_queue_collect(const test_entry_t *cfg, test_result_t *results
 
     if (fetch_url(url, &body, NULL, NULL, err, sizeof(err)) != 0) {
         r->ok = 0; r->value = 0; safe_copy(r->detail, err, sizeof(r->detail));
-        if (body.memory) free(body.memory); return 0;
+        if (body.memory) free(body.memory);
+        return 0;
     }
 
     int queue = 0, queue_len = 0;
@@ -222,7 +234,8 @@ static int php_fpm_queue_collect(const test_entry_t *cfg, test_result_t *results
         safe_copy(r->detail, "Failed to parse queue metrics", sizeof(r->detail));
     }
 
-    free(body.memory); return 0;
+    free(body.memory);
+    return 0;
 }
 
 /* =========================================================================
@@ -240,7 +253,8 @@ static int php_opcache_collect(const test_entry_t *cfg, test_result_t *results, 
         safe_copy(r->display_name, cfg->display_name, CONFIG_MAX_STR);
         r->timestamp = get_timestamp(); r->ok = 0; r->value = 0; 
         safe_copy(r->detail, err, sizeof(r->detail));
-        if (body.memory) free(body.memory); return 0;
+        if (body.memory) free(body.memory);
+        return 0;
     }
 
     double hit_rate = -1.0, free_mem = -1.0;
@@ -275,7 +289,8 @@ static int php_opcache_collect(const test_entry_t *cfg, test_result_t *results, 
         safe_copy(r->detail, "Failed to parse OPCache output", sizeof(r->detail));
     }
 
-    free(body.memory); return 0;
+    free(body.memory);
+    return 0;
 }
 
 /* =========================================================================
@@ -294,14 +309,16 @@ static int web_response_time_collect(const test_entry_t *cfg, test_result_t *res
 
     if (fetch_url(url, &body, NULL, &total_time, err, sizeof(err)) != 0) {
         r->ok = 0; r->value = 0; safe_copy(r->detail, err, sizeof(r->detail));
-        if (body.memory) free(body.memory); return 0;
+        if (body.memory) free(body.memory);
+        return 0;
     }
 
     r->ok = 1; r->value = total_time * 1000.0; 
     safe_copy(r->unit, "ms", sizeof(r->unit));
     snprintf(r->detail, sizeof(r->detail), "Response time: %.2f ms", r->value);
 
-    free(body.memory); return 0;
+    free(body.memory);
+    return 0;
 }
 
 const test_module_t mod_web_type          = { .type_name = "web_type",          .collect = web_type_collect };

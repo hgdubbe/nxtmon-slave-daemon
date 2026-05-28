@@ -42,11 +42,11 @@ The installer will prompt you for:
 The daemon is driven entirely by a YAML configuration file located at:
 `/etc/nxtmon/config.yaml`
 
-You can view all possible module configurations in the provided [`doc/reference_config.yaml`](doc/reference_config.yaml). 
+You can view all possible module configurations in the provided [`doc/reference_config.md`](doc/reference_config.md). 
 
 **Key Configuration Blocks:**
 *   `agent`: Defines the display name and tags of the node.
-*   `master`: Defines the IP, Port, and Bearer Token for the central nxtmon receiver.
+*   `master`: Defines the host, port, and optional bearer token for the central nxtmon receiver.
 *   `tests`: An array of module invocations. Each test requires a `type` matching an internal C module. Depending on the test, it may require `hosts` (IP/Port), or `extra_val` (file paths, sockets, passwords).
 
 ---
@@ -150,10 +150,10 @@ sudo apt-get install build-essential libyaml-dev libcurl4-openssl-dev libmariadb
 make
 ```
 
-**3. Run Locally (Dumps JSON to stdout instead of pushing):**
-To test new modules without sending data to a master node, run the executable directly. It will detect manual execution and print the JSON payload to the console:
+**3. Run Locally (Dumps JSON to stdout if no master is configured):**
+To test new modules without sending data to a master node, run with a config that omits `master.host`. The daemon prints the JSON payload to the console:
 ```bash
-./nxtmon-slave doc/reference_config.yaml | jq .
+./nxtmon-slave default.yaml | jq .
 ```
 
 ### Adding a New Module

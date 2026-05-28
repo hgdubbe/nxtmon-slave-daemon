@@ -12,8 +12,11 @@ static long long get_timestamp(void) {
 }
 
 static void safe_copy(char *dst, const char *src, size_t max) {
-    strncpy(dst, src, max - 1);
-    dst[max - 1] = '\0';
+    if (max == 0) return;
+    size_t len = strlen(src);
+    if (len >= max) len = max - 1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
 }
 
 /* =========================================================================
@@ -40,7 +43,10 @@ static redisContext* redis_connect_helper(const test_entry_t *cfg, char *err_buf
     }
 
     /* Handle authentication if provided in extra_val */
-    if (strcmp(cfg->extra_key, "password") == 0 && strlen(cfg->extra_val) > 0) {
+    if ((strcmp(cfg->extra_key, "password") == 0 ||
+         strcmp(cfg->extra_key, "auth") == 0 ||
+         cfg->extra_key[0] == '\0') &&
+        strlen(cfg->extra_val) > 0) {
         redisReply *reply = (redisReply*)redisCommand(c, "AUTH %s", cfg->extra_val);
         if (reply == NULL) {
             snprintf(err_buf, err_max, "Redis AUTH failed: connection dropped");
@@ -83,7 +89,7 @@ static int get_info_value(const char *info, const char *key, char *out_val, size
     size_t len = end - start;
     if (len >= max_len) len = max_len - 1;
     
-    strncpy(out_val, start, len);
+    memcpy(out_val, start, len);
     out_val[len] = '\0';
     return 1;
 }

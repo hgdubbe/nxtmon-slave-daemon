@@ -28,10 +28,12 @@ tests:
   # ==========================================
   - type: service_status
     display_name: "MariaDB Service State"
+    extra_key: "unit"
     extra_val: "mariadb"
 
   - type: service_pid
     display_name: "Redis PID Check"
+    extra_key: "process"
     extra_val: "redis-server"
 
   # ==========================================
@@ -170,6 +172,7 @@ tests:
   # ==========================================
   - type: lb_backend_state
     display_name: "HAProxy Backend State"
+    extra_key: "socket"
     extra_val: "/run/haproxy/admin.sock"
 
   - type: ssl_cert

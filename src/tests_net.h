@@ -2,6 +2,6 @@
 #define TESTS_NET_H
 
 /* Registers all network-related test modules with the framework */
-void register_network_tests(void);
+void register_net_tests(void);
 
 #endif

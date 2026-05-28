@@ -11,8 +11,11 @@ static long long get_timestamp(void) {
 }
 
 static void safe_copy(char *dst, const char *src, size_t max) {
-    strncpy(dst, src, max - 1);
-    dst[max - 1] = '\0';
+    if (max == 0) return;
+    size_t len = strlen(src);
+    if (len >= max) len = max - 1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
 }
 
 /* =========================================================================
@@ -133,8 +136,7 @@ static int nc_log_errors_collect(const test_entry_t *cfg, test_result_t *results
     char buf[256];
     
     while (fgets(buf, sizeof(buf), fp)) {
-        strncpy(lines[line_idx % 50], buf, 255);
-        lines[line_idx % 50][255] = '\0';
+        snprintf(lines[line_idx % 50], sizeof(lines[line_idx % 50]), "%s", buf);
         line_idx++;
     }
     fclose(fp);

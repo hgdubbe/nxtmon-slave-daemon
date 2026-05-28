@@ -11,8 +11,11 @@
 
 static void safe_copy(char *dst, const char *src, size_t max)
 {
-    strncpy(dst, src, max - 1);
-    dst[max - 1] = '\0';
+    if (max == 0) return;
+    size_t len = strlen(src);
+    if (len >= max) len = max - 1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
 }
 
 /* -----------------------------------------------------------------------
@@ -45,7 +48,7 @@ typedef enum {
     S_TEST_HOST_ENTRY
 } parse_state_t;
 
-int parse_yaml_config(const char *path, config_t *cfg)
+int config_parse(const char *path, config_t *cfg)
 {
     if (!path || !cfg) return -1;
     memset(cfg, 0, sizeof(*cfg));
@@ -150,6 +153,9 @@ int parse_yaml_config(const char *path, config_t *cfg)
                     safe_copy(cfg->master.host, val, CONFIG_MAX_STR);
                 else if (strcmp(last_key, "port") == 0)
                     cfg->master.port = atoi(val);
+                else if (strcmp(last_key, "token") == 0 ||
+                         strcmp(last_key, "bearer_token") == 0)
+                    safe_copy(cfg->master.token, val, CONFIG_MAX_STR);
                 safe_copy(last_key, val, CONFIG_MAX_STR);
                 break;
 
@@ -219,6 +225,7 @@ void config_dump(const config_t *cfg)
     printf("master:\n");
     printf("  host: %s\n", cfg->master.host);
     printf("  port: %d\n", cfg->master.port);
+    printf("  token: %s\n", cfg->master.token[0] ? "(configured)" : "");
     printf("agent:\n");
     printf("  display_name: %s\n", cfg->agent.display_name);
     printf("  interval_sec: %d\n", cfg->agent.interval_sec);

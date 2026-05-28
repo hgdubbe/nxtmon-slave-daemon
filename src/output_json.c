@@ -31,7 +31,7 @@ char* generate_json_payload(const config_t *cfg, const test_result_t *results, s
         
         char hostname[256] = "unknown";
         if (gethostname(hostname, sizeof(hostname)) != 0) {
-            strncpy(hostname, "unknown", sizeof(hostname));
+            snprintf(hostname, sizeof(hostname), "%s", "unknown");
         }
         cJSON_AddStringToObject(agent, "hostname", hostname);
         

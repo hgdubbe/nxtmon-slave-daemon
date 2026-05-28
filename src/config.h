@@ -31,6 +31,7 @@ typedef struct {
 typedef struct {
     char host[CONFIG_MAX_STR];
     int  port;
+    char token[CONFIG_MAX_STR];
 } master_cfg_t;
 
 /* agent: block */

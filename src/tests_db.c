@@ -10,8 +10,11 @@ static long long get_timestamp(void) {
 }
 
 static void safe_copy(char *dst, const char *src, size_t max) {
-    strncpy(dst, src, max - 1);
-    dst[max - 1] = '\0';
+    if (max == 0) return;
+    size_t len = strlen(src);
+    if (len >= max) len = max - 1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
 }
 
 /* =========================================================================
@@ -34,7 +37,10 @@ static MYSQL* db_connect_helper(const test_entry_t *cfg, char *err_buf, size_t e
     char user[64] = "nxtmon";
     char pass[64] = "";
     
-    if (strcmp(cfg->extra_key, "credentials") == 0) {
+    if ((strcmp(cfg->extra_key, "credentials") == 0 ||
+         strcmp(cfg->extra_key, "auth") == 0 ||
+         cfg->extra_key[0] == '\0') &&
+        strlen(cfg->extra_val) > 0) {
         char creds[128];
         safe_copy(creds, cfg->extra_val, sizeof(creds));
         char *colon = strchr(creds, ':');

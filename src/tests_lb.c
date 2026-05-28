@@ -15,14 +15,17 @@ static long long get_timestamp(void) {
 }
 
 static void safe_copy(char *dst, const char *src, size_t max) {
-    strncpy(dst, src, max - 1);
-    dst[max - 1] = '\0';
+    if (max == 0) return;
+    size_t len = strlen(src);
+    if (len >= max) len = max - 1;
+    memcpy(dst, src, len);
+    dst[len] = '\0';
 }
 
 /* =========================================================================
  * TEST: ssl_cert
  * Checks SSL certificate expiration days remaining for a given domain.
- * Uses extra_key: "domain", extra_val: "example.com"
+ * Uses extra_key: "domain", extra_val: "example.com" or hosts[0].host.
  * Requires `openssl` binary in PATH.
  * ========================================================================= */
 static int ssl_cert_collect(const test_entry_t *cfg, test_result_t *results, size_t max_results, size_t *out_count) {
@@ -34,15 +37,26 @@ static int ssl_cert_collect(const test_entry_t *cfg, test_result_t *results, siz
     safe_copy(r->display_name, cfg->display_name, CONFIG_MAX_STR);
     r->timestamp = get_timestamp();
     
-    if (strcmp(cfg->extra_key, "domain") != 0 || strlen(cfg->extra_val) == 0) {
+    const char *domain = NULL;
+    int port = 443;
+    if (strcmp(cfg->extra_key, "domain") == 0 && strlen(cfg->extra_val) > 0) {
+        domain = cfg->extra_val;
+    } else if (cfg->host_count > 0 && strlen(cfg->hosts[0].host) > 0) {
+        domain = cfg->hosts[0].host;
+        if (cfg->hosts[0].port > 0) port = cfg->hosts[0].port;
+    } else if (cfg->extra_key[0] == '\0' && strlen(cfg->extra_val) > 0) {
+        domain = cfg->extra_val;
+    }
+
+    if (!domain) {
         r->ok = 0; r->value = 0;
-        safe_copy(r->detail, "Missing 'domain' in extra_key/val", sizeof(r->detail));
+        safe_copy(r->detail, "Missing domain in extra_val or hosts[0].host", sizeof(r->detail));
         return 0;
     }
 
     /* Basic sanitization (prevent shell injection) */
-    for (size_t i = 0; i < strlen(cfg->extra_val); i++) {
-        if (!isalnum(cfg->extra_val[i]) && cfg->extra_val[i] != '-' && cfg->extra_val[i] != '.') {
+    for (size_t i = 0; i < strlen(domain); i++) {
+        if (!isalnum(domain[i]) && domain[i] != '-' && domain[i] != '.') {
             r->ok = 0; r->value = 0;
             safe_copy(r->detail, "Invalid characters in domain", sizeof(r->detail));
             return 0;
@@ -51,7 +65,7 @@ static int ssl_cert_collect(const test_entry_t *cfg, test_result_t *results, siz
 
     char cmd[512];
     /* Shell out to openssl to get the 'notAfter' date */
-    snprintf(cmd, sizeof(cmd), "echo | openssl s_client -servername %.100s -connect %.100s:443 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null", cfg->extra_val, cfg->extra_val);
+    snprintf(cmd, sizeof(cmd), "echo | openssl s_client -servername %.100s -connect %.100s:%d 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null", domain, domain, port);
     
     FILE *fp = popen(cmd, "r");
     if (!fp) {
@@ -109,8 +123,9 @@ const test_module_t mod_ssl_cert = { .type_name = "ssl_cert", .collect = ssl_cer
 
 /* =========================================================================
  * TEST: lb_backend_state (HAProxy)
- * Queries the HAProxy UNIX socket for UP/DOWN stats of a specific backend pool.
- * Uses extra_key: "backend_pool", extra_val: "nextcloud_cluster"
+ * Queries the HAProxy UNIX socket for UP/DOWN backend/server stats.
+ * extra_key "socket" treats extra_val as the socket path and aggregates all pools.
+ * extra_key "backend_pool" filters by pool and uses the default HAProxy socket path.
  * ========================================================================= */
 static int lb_backend_state_collect(const test_entry_t *cfg, test_result_t *results, size_t max_results, size_t *out_count) {
     if (max_results < 1) return -1;
@@ -121,9 +136,27 @@ static int lb_backend_state_collect(const test_entry_t *cfg, test_result_t *resu
     safe_copy(r->display_name, cfg->display_name, CONFIG_MAX_STR);
     r->timestamp = get_timestamp();
     
-    if (strcmp(cfg->extra_key, "backend_pool") != 0 || strlen(cfg->extra_val) == 0) {
+    char socket_path[CONFIG_MAX_STR];
+    char backend_pool[CONFIG_MAX_STR];
+    safe_copy(socket_path, "/run/haproxy/admin.sock", sizeof(socket_path));
+    backend_pool[0] = '\0';
+
+    if (strcmp(cfg->extra_key, "backend_pool") == 0 && strlen(cfg->extra_val) > 0) {
+        safe_copy(backend_pool, cfg->extra_val, sizeof(backend_pool));
+    } else if ((strcmp(cfg->extra_key, "socket") == 0 || cfg->extra_key[0] == '\0') &&
+               strlen(cfg->extra_val) > 0) {
+        safe_copy(socket_path, cfg->extra_val, sizeof(socket_path));
+    } else if (strlen(cfg->extra_val) == 0) {
+        /* Keep the default socket path and aggregate all backend servers. */
+    } else {
         r->ok = 0; r->value = 0;
-        safe_copy(r->detail, "Missing 'backend_pool' in extra_key/val", sizeof(r->detail));
+        safe_copy(r->detail, "Invalid extra_key for lb_backend_state", sizeof(r->detail));
+        return 0;
+    }
+
+    if (strlen(socket_path) >= sizeof(((struct sockaddr_un *)0)->sun_path)) {
+        r->ok = 0; r->value = 0;
+        safe_copy(r->detail, "HAProxy socket path too long", sizeof(r->detail));
         return 0;
     }
 
@@ -137,11 +170,11 @@ static int lb_backend_state_collect(const test_entry_t *cfg, test_result_t *resu
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, "/run/haproxy/admin.sock", sizeof(addr.sun_path)-1);
+    memcpy(addr.sun_path, socket_path, strlen(socket_path) + 1);
 
     if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         r->ok = 0; r->value = 0;
-        safe_copy(r->detail, "Cannot connect to HAProxy socket /run/haproxy/admin.sock", sizeof(r->detail));
+        snprintf(r->detail, sizeof(r->detail), "Cannot connect to HAProxy socket %.120s", socket_path);
         close(sock);
         return 0;
     }
@@ -173,7 +206,9 @@ static int lb_backend_state_collect(const test_entry_t *cfg, test_result_t *resu
             if (!comma2) continue;
             *comma2 = '\0';
             
-            if (strcmp(pxname, cfg->extra_val) == 0 && strcmp(svname, "BACKEND") != 0 && strcmp(svname, "FRONTEND") != 0) {
+            if ((backend_pool[0] == '\0' || strcmp(pxname, backend_pool) == 0) &&
+                strcmp(svname, "BACKEND") != 0 &&
+                strcmp(svname, "FRONTEND") != 0) {
                 char *curr = comma2 + 1;
                 /* Skip 15 columns to reach 'status' (index 17) */
                 for (int i = 0; i < 15; i++) {
@@ -199,12 +234,20 @@ static int lb_backend_state_collect(const test_entry_t *cfg, test_result_t *resu
     if (total == 0) {
         r->ok = 0; r->value = 0;
         safe_copy(r->unit, "nodes", sizeof(r->unit));
-        snprintf(r->detail, sizeof(r->detail), "Backend pool '%.100s' not found or empty", cfg->extra_val);
+        if (backend_pool[0]) {
+            snprintf(r->detail, sizeof(r->detail), "Backend pool '%.100s' not found or empty", backend_pool);
+        } else {
+            snprintf(r->detail, sizeof(r->detail), "No backend server rows found via %.120s", socket_path);
+        }
     } else {
         r->ok = (up_count > 0) ? 1 : 0; 
         r->value = (double)up_count / total;
         safe_copy(r->unit, "fraction", sizeof(r->unit));
-        snprintf(r->detail, sizeof(r->detail), "%d/%d nodes UP in pool %.100s", up_count, total, cfg->extra_val);
+        if (backend_pool[0]) {
+            snprintf(r->detail, sizeof(r->detail), "%d/%d nodes UP in pool %.100s", up_count, total, backend_pool);
+        } else {
+            snprintf(r->detail, sizeof(r->detail), "%d/%d HAProxy backend nodes UP", up_count, total);
+        }
     }
 
     return 0;
