@@ -1,247 +1,162 @@
-#nxtmon-slave-daemon
+# nxtmon-slave-daemon
 
-nxtmon Slave Daemon - AI Implementation Specification
-Role: The slave daemon (nxtmond --role slave) is a modular, lightweight data-collection agent running on monitored Linux hosts. It executes a dynamically configured list of generic tests, formats the results into a standardized JSON payload, and pushes them to a central master daemon via TCP.
+A high-performance, ultra-lightweight telemetry agent for the nxtmon monitoring suite. 
 
-install with:
+Written in pure C, this daemon is designed to gather critical infrastructure, database, and application metrics and push them securely over TLS to a central master node. To absolutely guarantee zero memory leaks over months of uptime, the daemon is designed as a single-pass executable driven by a `systemd` scheduling loop.
+
+## 🚀 Features & Telemetry Modules
+
+The daemon uses a modular vtable framework to dynamically execute checks defined in the configuration file.
+
+*   **System (Hardware):** CPU usage, RAM fraction, 1/5/15m Load Averages, Disk Usage, Disk IOPS (via `/proc`).
+*   **Network & OS:** TCP connectivity latency, DNS resolution, systemd unit states, PID checks.
+*   **Databases (MariaDB/MySQL):** Read/Write latency, Replication Role (Master/Slave), Read-Only state, GTID position, InnoDB Buffer Pool hit rate, Active connections.
+*   **In-Memory (Redis):** Replication lag, Memory usage, Evicted keys rate, Connected clients.
+*   **Load Balancing (HAProxy):** Direct Unix socket backend state polling, Domain SSL certificate expiration checks.
+*   **Web & PHP:** PHP-FPM worker saturation, Listen queues, OPCache memory hit rates, Loopback response times.
+*   **Application (Nextcloud):** OCS Serverinfo API health, Cron execution latency, Log error rate counting, Active user tracking.
+*   **Storage (NFS):** Export availability, Client mount verification, Read/Write IO latency validation, Inode usage.
+
+---
+
+## 📦 Installation
+
+We provide an automated installer that checks for dependencies, dynamically builds the binary from source, places the configuration files, and sets up the systemd service.
+
+Run the following command on the target Linux machine (Debian/Ubuntu recommended):
+
+```bash
 sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/main/install.sh)"
+```
 
-enable/disable/start/stop/status service
-sudo systemctl enable/disable/start/stop/status nxtmon-slave.service
+The installer will prompt you for:
+1.  Installing missing `apt` dependencies (libcurl, libmariadb, libhiredis, etc.).
+2.  Compiling the `nxtmon-slave` binary.
+3.  Installing it to `/usr/local/bin` and copying the default config to `/etc/nxtmon/config.yaml`.
+4.  Setting the polling interval (default: 10s) and verbosity (to prevent systemd log spam).
 
-Architecture Paradigm: The slave has no concept of "Host Roles" (e.g., it does not know what a "loadbalancer" is). It only knows how to execute atomic "Tests" (e.g., cpu, url_reachable, tcp_connect) defined in a YAML configuration file.
---test / --dry-run: load config, run all tests once, print JSON to stdout.
+---
 
---dump-config: parse and re-emit the effective config for debugging. validate config
+## ⚙️ Configuration
 
-Self-monitoring:
+The daemon is driven entirely by a YAML configuration file located at:
+`/etc/nxtmon/config.yaml`
 
-Lightweight logging (to syslog or file) with log-level flag, especially for connection failures.
-1. Configuration Engine (YAML)
-The daemon parses a YAML configuration file (using libyaml) containing:
+You can view all possible module configurations in the provided [`doc/reference_config.yaml`](doc/reference_config.yaml). 
 
-Agent Metadata: display_name (nickname), master host/port, and interval_sec.
+**Key Configuration Blocks:**
+*   `agent`: Defines the display name and tags of the node.
+*   `master`: Defines the IP, Port, and Bearer Token for the central nxtmon receiver.
+*   `tests`: An array of module invocations. Each test requires a `type` matching an internal C module. Depending on the test, it may require `hosts` (IP/Port), or `extra_val` (file paths, sockets, passwords).
 
-Test Sequence: A list of tests. Each test requires a type (maps to an internal C function) and a display_name. Some tests require specific arguments (e.g., url for HTTP checks, host/port for TCP checks).
+---
 
-Example YAML Structure to Support:
+## 🛠️ Service Management
 
-text
-master:
-  host: 10.0.0.10
-  port: 9000
-agent:
-  display_name: myloadbalancer
-  interval_sec: 10
-tests:
-  - type: hostname
-    display_name: Local Hostname
-  - type: cpu
-    display_name: CPU Usage
-  - type: url_reachable
-    display_name: Nextcloud1 Reachability
-    hosts:
-      - display_name: nextcloud1
-        url: https://nextcloud1.xyz.local/status.php
-  - type: url_reachable
-    display_name: Nextcloud2 Reachability
-    hosts:
-      - display_name: nextcloud1
-        url: https://nextcloud1.xyz.local/status.php
-2. Test Execution Framework (C Implementation)
-The core logic must use a Test Registry (function pointer vtable approach) rather than hardcoded monoliths.
+The daemon runs as a `systemd` service. The interval at which it runs is defined by the `RestartSec=` parameter in its unit file.
 
-Signature: Each test module implements an init/collect/shutdown interface.
+**Check if the daemon is running cleanly:**
+```bash
+sudo systemctl status nxtmon-slave
+```
+*(Note: Seeing `inactive (dead)` with `code=exited, status=0/SUCCESS` momentarily is normal. The binary runs instantly and exits, waiting for the systemd timer to restart it).*
 
-Execution: In the main loop, the daemon iterates through the loaded YAML tests array, calling the mapped collect function for each.
+**View live telemetry logs:**
+```bash
+sudo journalctl -u nxtmon-slave -f
+```
 
-Standardized Output: Every test function returns an array of generic test_result_t structs containing:
+**Restart the daemon after changing the YAML config:**
+```bash
+sudo systemctl restart nxtmon-slave
+```
 
-type (string)
+**Uninstall the daemon completely:**
+```bash
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/main/install.sh)" -- --uninstall
+```
 
-display_name (string)
+---
 
-ok (boolean/int: 1=success, 0=fail, -1=unknown)
+## 📡 API Schema Specification (V2)
 
-value (double/float for metrics, or mapped to string)
+When the daemon completes its checks, it packages the metrics into a minified JSON payload and securely `POST`s it to the master node (`https://<master-ip>/api/telemetry`).
 
-unit (string, e.g., "fraction", "ms", "http_status", or null)
+The payload conforms to **Schema Version 2**:
 
-detail (string, human-readable context/errors)
-
-3. Core Test Types to Implement
-The daemon must bundle the following built-in test handlers:
-
-System/OS: hostname, host_ip, cpu (via /proc/stat), ram (via /proc/meminfo).
-
-Network: ping (ICMP or fallback to TCP port 7 echo), tcp_connect (timeout-based socket connection).
-
-Application: service_status (check if a systemd unit is active), url_reachable (HTTP GET/HEAD using libcurl, verifying HTTP 200/3xx).
-
-Database: database_status, database_query (extensible standard SQL checks via MariaDB C connector).
-
-4. Payload Generation (cJSON)
-The daemon aggregates all test_result_t items into a strictly formatted JSON payload (Schema Version 2).
-
-Expected JSON Schema:
-
-json
+```json
 {
   "schema_version": 2,
-  "timestamp": 1760000000,
+  "timestamp": 1779915971,
   "agent": {
-    "display_name": "myloadbalancer",
-    "hostname": "lb-01"
+    "display_name": "dbmaster-node-01",
+    "hostname": "dbmaster"
   },
   "results": [
     {
-      "type": "cpu",
-      "display_name": "CPU Usage",
+      "type": "ram",
+      "display_name": "RAM Usage",
       "ok": true,
-      "value": 0.23,
+      "value": 0.02437,
       "unit": "fraction",
-      "detail": "average since last cycle"
-      "timestamp:" "1759999991"
+      "detail": "RAM: 0.8 GB used / 31.3 GB total",
+      "timestamp": 1779915971
     },
     {
-      "type": "url_reachable",
-      "display_name": "Nextcloud1 Reachability",
-      "ok": true,
-      "value": 200,
-      "unit": "http_status",
-      "detail": "reachable"
-      "timestamp:" "1759999993"
+      "type": "service_pid",
+      "display_name": "Redis PID Check",
+      "ok": false,
+      "value": 0,
+      "unit": "pid",
+      "detail": "Process redis-server not found",
+      "timestamp": 1779915969
     },
     {
-      "type": "url_reachable",
-      "display_name": "Nextcloud2 Reachability",
-      "ok": true,
-      "value": 200,
-      "unit": "http_status",
-      "detail": "reachable"
-      "timestamp:" "1759999995"
+      "type": "lb_cache",
+      "display_name": "Proxy Cache Hit Ratio",
+      "ok": null,
+      "value": 0,
+      "unit": null,
+      "detail": "Test execution failed or module type unregistered",
+      "timestamp": 1779915969
     }
   ]
 }
-5. Transport & Resilience
-Protocol: TCP with a 4-byte big-endian length prefix framing, followed by the JSON string.
+```
 
-Behavior: Connect to master, push payload, close connection. Do not maintain persistent stateful connections.
+### Data Types
+*   **`ok` (Boolean/Null):** 
+    *   `true` (1): The check passed successfully.
+    *   `false` (0): The check failed (e.g., service offline, threshold exceeded).
+    *   `null` (-1): The check crashed, couldn't be executed, or the module `type` was not registered in the C framework.
+*   **`value` (Float):** The raw numerical metric (ms latency, fractions 0.0-1.0, counts).
+*   **`unit` (String):** Maps to frontend UI formatters (`ms`, `fraction`, `iops`, `pid`, `count`).
 
-Resilience: Must include connection timeout handling (non-blocking connects) and retry logic (e.g., 3 attempts with 500ms backoff) to prevent the daemon from blocking or crashing if the master is temporarily down.
+---
 
-Summary of AI Directives:
-Use libyaml for configuration parsing.
+## 👨‍💻 Development & Compilation
 
-Use cJSON for payload encoding.
+To build the daemon manually for development without the installer:
 
-#the tests are:
---- network ---
+**1. Install Dependencies (Debian/Ubuntu):**
+```bash
+sudo apt-get update
+sudo apt-get install build-essential libyaml-dev libcurl4-openssl-dev libmariadb-dev libmariadb-dev-compat libhiredis-dev libcjson-dev libssl-dev
+```
 
-hostname
+**2. Compile:**
+```bash
+make
+```
 
-ip-address
+**3. Run Locally (Dumps JSON to stdout instead of pushing):**
+To test new modules without sending data to a master node, run the executable directly. It will detect manual execution and print the JSON payload to the console:
+```bash
+./nxtmon-slave doc/reference_config.yaml | jq .
+```
 
-avg network load
-
-name resolution possible
-
-ping (reachable + latency)
-
-dropped packets / connection tracking table full (conntrack)
---- local services ---
-
-service status
-
-service port
-
-service pid
-
-active connections per service port
---- load balancer (Nginx/HAProxy) ---
-
-backend node state (UP/DOWN transitions per Nextcloud app node)
-
-sticky-session / proxy header propagation check
-
-active client connections vs backend connections
-
-SSL certificate validity (expiration date)
-
-cache hit/miss ratio (if proxy_cache is used)
---- database (MariaDB) ---
-
-from schema:
-write latency
-read latency
-master/slave
-rw/ro
-
-GTID
-
-sync-status (timestamped comparison of Master/Slave GTID)
-
-slow query rate
-
-available connections (Threads_connected vs max_connections)
-
-InnoDB buffer pool usage / hit rate
---- Redis ---
-
-sync channel
-
-sync status (comparison of timestamped payload between master and slave)
-
-memory usage vs maxmemory limit
-
-evicted keys rate
-
-connected clients count
---- webserver / PHP (Nginx & PHP-FPM on App Nodes) ---
-
-type (nginx, apache)
-
-port
-
-PHP-FPM active workers vs max_children
-
-PHP-FPM listen queue / rejected connections
-
-OPCache hit rate and memory availability
-
-web response time (synthetic test via localhost loopback)
---- NFS ---
-
-exports exported?
-
-exports mounted?
-
-read/write-test on exports
-
-NFS wait time / iowait metric on client nodes
-
-inode usage on NFS server
---- Nextcloud Application (App Nodes via CLI/API) ---
-
-cron execution timestamp (background jobs running?)
-
-serverinfo API health status (via occ or loopback HTTP)
-
-active users / logged-in sessions
-
-Nextcloud log error rate (counting new "Error" or "Fatal" lines in nextcloud.log)
---- System ---
-
-disk I/O
-
-disk usage
-
-cpu usage
-
-ram usage
-
-system load average (1m, 5m, 15m)
-
-#Build a modular test vtable; DO NOT hardcode host roles (loadbalancer, nextcloud) into the C architecture.
-
-Keep the C code clean, using separate .c files for different test categories (e.g., tests_os.c, tests_net.c, tests_db.c).
+### Adding a New Module
+1. Create your logic in a new `src/tests_custom.c` file.
+2. Follow the `static int my_collect_func(const test_entry_t *cfg, test_result_t *results, size_t max_results, size_t *out_count)` signature.
+3. Expose it via a registry function (`register_custom_tests()`).
+4. Include and call your registry function in `src/main.c` before the YAML parser triggers.
