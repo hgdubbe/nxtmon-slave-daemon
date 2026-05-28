@@ -37,7 +37,7 @@ echo -e "${GREEN}      nxtmon-slave-daemon Auto-Installer${NC}"
 echo -e "${BLUE}======================================================${NC}\n"
 
 # 0. Environment Setup
-# If not run inside the repo, clone it into a temp dir so curl | bash works anywhere
+# If not run inside the repo, clone it into a temp dir so bash -c "$(curl...)" works anywhere
 if [ ! -d "src" ] || [ ! -f "src/main.c" ]; then
     echo -e "${YELLOW}Not inside repository. Cloning from GitHub...${NC}"
     TEMP_DIR=$(mktemp -d)
@@ -152,15 +152,15 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     sudo chmod +x /usr/local/bin/nxtmon-slave
     
     sudo mkdir -p /etc/nxtmon
-    if [ -f "docs/reference.yaml" ]; then
+    if [ -f "docs/reference_config.yaml" ]; then
         if [ ! -f "/etc/nxtmon/config.yaml" ]; then
-            sudo cp docs/reference.yaml /etc/nxtmon/config.yaml
-            echo -e "Copied reference.yaml to /etc/nxtmon/config.yaml"
+            sudo cp docs/reference_config.yaml /etc/nxtmon/config.yaml
+            echo -e "Copied docs/reference_config.yaml to /etc/nxtmon/config.yaml"
         else
             echo -e "Configuration /etc/nxtmon/config.yaml already exists. Skipping overwrite."
         fi
     else
-        echo -e "${YELLOW}Warning: docs/reference.yaml not found. You will need to manually create /etc/nxtmon/config.yaml${NC}"
+        echo -e "${YELLOW}Warning: docs/reference_config.yaml not found. You will need to manually create /etc/nxtmon/config.yaml${NC}"
     fi
     echo -e "${GREEN}Installation complete!${NC}\n"
 else
@@ -204,5 +204,6 @@ fi
 echo -e "${YELLOW}[5/5] All Done!${NC}"
 echo -e "The daemon will poll and push telemetry every 10 seconds."
 echo -e "Make sure to edit ${BLUE}/etc/nxtmon/config.yaml${NC} with your master node details."
-echo -e "To uninstall in the future, run: ${BLUE}curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/main/install.sh | sudo bash -s -- --uninstall${NC}"
+echo -e "To uninstall in the future, run:"
+echo -e "${BLUE}sudo bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/main/install.sh)\" -- --uninstall${NC}"
 echo -e "======================================================\n"
