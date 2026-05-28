@@ -153,7 +153,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     sudo mkdir -p /etc/nxtmon
     
     # Configuration Setup
-    CONFIG_URL="https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/refs/heads/main/default.yaml"
+    CONFIG_URL="https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/refs/heads/test/default.yaml"
     TEMP_CONFIG=$(mktemp)
     
     echo -e "Downloading default.yaml from repository..."
@@ -227,5 +227,5 @@ echo -e "${YELLOW}[5/5] All Done!${NC}"
 echo -e "The daemon will poll and push telemetry every 10 seconds (or your chosen interval)."
 echo -e "Make sure to edit ${BLUE}/etc/nxtmon/config.yaml${NC} with your master node details."
 echo -e "To uninstall in the future, run:"
-echo -e "${BLUE}sudo bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/main/install.sh)\" -- --uninstall${NC}"
+echo -e "${BLUE}sudo bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/hgdubbe/nxtmon-slave-daemon/test/install.sh)\" -- --uninstall${NC}"
 echo -e "======================================================\n"
